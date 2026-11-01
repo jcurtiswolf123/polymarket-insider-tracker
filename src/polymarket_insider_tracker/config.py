@@ -176,7 +176,7 @@ class PolygonSettings(BaseSettings):
     )
 
     rpc_url: HttpEndpointUrl = Field(
-        default="https://polygon-rpc.com",
+        default="https://polygon-bor-rpc.publicnode.com",
         alias="POLYGON_RPC_URL",
         description="Primary Polygon RPC endpoint",
     )

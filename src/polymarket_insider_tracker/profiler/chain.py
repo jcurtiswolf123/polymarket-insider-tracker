@@ -108,7 +108,7 @@ class PolygonClient:
         ```python
         redis = Redis.from_url("redis://localhost:6379")
         client = PolygonClient(
-            rpc_url="https://polygon-rpc.com",
+            rpc_url="https://polygon-bor-rpc.publicnode.com",
             fallback_rpc_url="https://polygon-bor.publicnode.com",
             redis=redis,
         )

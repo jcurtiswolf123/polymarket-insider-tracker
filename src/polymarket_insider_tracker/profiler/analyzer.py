@@ -49,7 +49,7 @@ class WalletAnalyzer:
 
     Example:
         ```python
-        client = PolygonClient("https://polygon-rpc.com", redis=redis)
+        client = PolygonClient("https://polygon-bor-rpc.publicnode.com", redis=redis)
         analyzer = WalletAnalyzer(client, redis=redis)
 
         # Full analysis

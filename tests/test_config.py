@@ -226,7 +226,7 @@ class TestPolygonSettings:
         """Test default Polygon RPC URL."""
         with env_context({}, clear=True):
             settings = PolygonSettings()
-            assert settings.rpc_url == "https://polygon-rpc.com"
+            assert settings.rpc_url == "https://polygon-bor-rpc.publicnode.com"
             assert settings.fallback_rpc_url is None
 
     def test_custom_urls(self) -> None:
