@@ -447,6 +447,19 @@ class Pipeline:
                 asyncio.create_task(self._trade_worker()) for _ in range(self._trade_workers)
             ]
             logger.info("trade worker pool: %d workers", self._trade_workers)
+            self._worker_tasks.append(asyncio.create_task(self._report_queue()))
+
+    async def _report_queue(self) -> None:
+        while True:
+            await asyncio.sleep(30)
+            queue = self._trade_queue
+            if queue is not None:
+                logger.info(
+                    "trade queue depth=%d processed=%d signals=%d",
+                    queue.qsize(),
+                    self._stats.trades_processed,
+                    self._stats.signals_generated,
+                )
 
     async def _on_polled_trade(self, trade: TradeEvent) -> None:
         """Poller callback: hand off to the worker pool when enabled, else score inline."""
