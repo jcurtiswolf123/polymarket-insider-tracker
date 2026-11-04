@@ -38,7 +38,7 @@ DEFAULT_PAGE_LIMIT = 100
 # at default sync interval. We sort by 24h volume desc and only walk the
 # top N pages, since markets with zero recent volume don't need a real
 # ratio anyway (the niche path handles them).
-DEFAULT_MAX_PAGES = 50  # 50 * 100 = 5000 most-traded markets per sync
+DEFAULT_MAX_PAGES = 21  # gamma now 422s past offset ~2100 (use keyset beyond)
 DEFAULT_PAGE_CONCURRENCY = 5
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BASE_DELAY_SECONDS = 1.0

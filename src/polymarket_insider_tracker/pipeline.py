@@ -10,6 +10,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import os
 import time
 from collections.abc import Awaitable
 from dataclasses import dataclass
@@ -192,6 +193,11 @@ class Pipeline:
         self._poller_task: asyncio.Task[None] | None = None
         self._metadata_task: asyncio.Task[None] | None = None
         self._terminal_writes: set[asyncio.Task[None]] = set()
+        # Local fork: TRADE_WORKERS>0 scores trades on a worker pool so a slow market or
+        # RPC lookup never stalls acquisition. 0 keeps upstream's inline processing.
+        self._trade_workers = max(0, int(os.environ.get("TRADE_WORKERS", "0") or 0))
+        self._trade_queue: asyncio.Queue[TradeEvent] | None = None
+        self._worker_tasks: list[asyncio.Task[None]] = []
 
     @property
     def settings(self) -> Settings:
@@ -375,7 +381,7 @@ class Pipeline:
         components = await build_components(
             self._settings,
             dry_run=self._dry_run,
-            on_trade=self.process_trade,
+            on_trade=self._on_polled_trade,
             on_ingestion_state=self.on_ingestion_state,
         )
         installed = self._install(components)
@@ -429,6 +435,30 @@ class Pipeline:
 
         logger.debug("Starting metadata sync service in the background...")
         self._metadata_task = asyncio.create_task(self._run_metadata_sync(installed))
+
+        if self._trade_workers:
+            self._trade_queue = asyncio.Queue(maxsize=self._trade_workers * 500)
+            self._worker_tasks = [
+                asyncio.create_task(self._trade_worker()) for _ in range(self._trade_workers)
+            ]
+            logger.info("trade worker pool: %d workers", self._trade_workers)
+
+    async def _on_polled_trade(self, trade: TradeEvent) -> None:
+        """Poller callback: hand off to the worker pool when enabled, else score inline."""
+        if self._trade_queue is None:
+            await self.process_trade(trade)
+            return
+        await self._trade_queue.put(trade)
+
+    async def _trade_worker(self) -> None:
+        queue = self._trade_queue
+        assert queue is not None
+        while True:
+            trade = await queue.get()
+            try:
+                await self.process_trade(trade)
+            finally:
+                queue.task_done()
 
     def _record_processing_error(self, message: str) -> None:
         """Count a recoverable per-trade failure and surface it at /health (lifecycle §5)."""
@@ -487,6 +517,10 @@ class Pipeline:
             await self._trade_poller.stop()
         await terminal.cancel_task(self._poller_task)
         await terminal.cancel_task(self._metadata_task)
+        for task in self._worker_tasks:
+            await terminal.cancel_task(task)
+        self._worker_tasks = []
+        self._trade_queue = None
         self._poller_task = None
         self._metadata_task = None
         await self._drain_terminal_writes()
