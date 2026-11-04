@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -31,6 +32,17 @@ from tests.fakes import make_test_settings
 from tests.fakes.health_http import served
 
 
+@pytest.fixture(autouse=True)
+def _ensure_fresh_wallet_scoring_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure SCORE_FRESH_WALLET is disabled by default for alert-path tests.
+
+    The alert-path tests depend on specific ceiling values. Without this fixture,
+    tests fail if SCORE_FRESH_WALLET is set in the shell environment. Individual
+    tests can override this by explicitly setting the variable.
+    """
+    monkeypatch.delenv("SCORE_FRESH_WALLET", raising=False)
+
+
 def _best_case_bundle(trade: TradeEvent) -> SignalBundle:
     """The best size-group evidence the detector can produce: saturated volume, niche."""
     metadata = MarketMetadata("m", "Q?", "", (Token("t", "Yes", trade.price),), category="science")
@@ -51,13 +63,32 @@ def test_the_shipped_threshold_is_still_0_80() -> None:
     assert make_test_settings().detector.alert_threshold == 0.80
 
 
-def test_default_threshold_is_unreachable_with_ceiling_0_450() -> None:
+@pytest.mark.parametrize(
+    ("fresh_wallet_flag", "expected_status", "expected_ceiling"),
+    [
+        (None, "unreachable", "0.450"),  # default: wallet scoring disabled
+        ("1", "reachable", "1.000"),  # opt-in: wallet scoring enabled, ceiling reaches 1.0
+    ],
+)
+def test_default_threshold_with_wallet_scoring_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    fresh_wallet_flag: str | None,
+    expected_status: str,
+    expected_ceiling: str,
+) -> None:
+    """The alert path changes when fresh-wallet scoring is enabled via environment variable."""
+    # Set or clear the environment variable for this test
+    if fresh_wallet_flag is None:
+        monkeypatch.delenv("SCORE_FRESH_WALLET", raising=False)
+    else:
+        monkeypatch.setenv("SCORE_FRESH_WALLET", fresh_wallet_flag)
+
     report = alert_path_report(DEFAULT_ALERT_THRESHOLD)
 
     assert report.fields() == {
-        "status": "unreachable",
+        "status": expected_status,
         "threshold": "0.800",
-        "ceiling": "0.450",
+        "ceiling": expected_ceiling,
         "wallet_group_status": "unqualified_pre_T027",
         "wallet_age_source": "none",
     }
