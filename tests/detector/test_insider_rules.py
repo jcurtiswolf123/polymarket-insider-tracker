@@ -149,3 +149,24 @@ def test_event_sweep() -> None:
     assert "R8_event_sweep" not in evaluate(
         feat(event_cumulative_usdc=Decimal(60000), event_markets=4, event_share=Decimal("0.05")), T
     )
+
+
+def test_watch_markets_get_the_wide_net() -> None:
+    from polymarket_insider_tracker.detector.insider_rules import evaluate_tiered, is_watch_market
+
+    assert is_watch_market("Will the Democrats win the Kansas governor race in 2026?")
+    assert not is_watch_market("Lakers vs Celtics")
+    f = feat(wallet_age_hours=60.0, notional_usdc=Decimal(6000))  # R1 needs <=48h and $10K
+    assert evaluate_tiered(f, watch=False, t=T) == []
+    assert "W_R1_fresh_big_bet" in evaluate_tiered(f, watch=True, t=T)
+
+
+def test_fresh_cluster_needs_three_young_wallets() -> None:
+    from polymarket_insider_tracker.detector.insider_rules import FreshCluster
+
+    c = FreshCluster(max_age_hours=168, min_wallets=3, min_usdc=Decimal(5000), window_s=86400)
+    assert not c.observe("m", "Yes", "a", 100, Decimal(2000), 10.0)
+    assert not c.observe("m", "Yes", "b", 200, Decimal(2000), 10.0)
+    assert not c.observe("m", "Yes", "old", 250, Decimal(9000), 5000.0)
+    assert c.observe("m", "Yes", "c", 300, Decimal(2000), 10.0)
+    assert not c.observe("m", "No", "d", 300, Decimal(9000), 10.0)

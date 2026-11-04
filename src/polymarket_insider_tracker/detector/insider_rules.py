@@ -13,7 +13,8 @@ Thresholds come from the environment so they can be tuned without a code change.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 
@@ -157,3 +158,80 @@ def evaluate(f: TradeFeatures, t: RuleThresholds | None = None) -> list[str]:
     ):
         fired.append("R8_event_sweep")
     return fired
+
+
+# Markets where the wide net applies live: elections and other politics with a known decision date.
+WATCH_PATTERN = re.compile(
+    os.environ.get(
+        "RULE_WATCH_REGEX",
+        r"election|midterm|governor|gubernatorial|senate|house|congress|mayor|proposition|"
+        r"ballot|attorney general|secretary of state|primary|recall|referendum",
+    ),
+    re.I,
+)
+
+
+def is_watch_market(*texts: str | None) -> bool:
+    return any(t and WATCH_PATTERN.search(t) for t in texts)
+
+
+def widened(t: RuleThresholds) -> RuleThresholds:
+    """The wide net: half the dollar floors, looser wallet-history caps and price bands."""
+    h = Decimal("0.5")
+    return replace(
+        t,
+        fresh_hours=t.fresh_hours * 3,
+        fresh_big_usdc=t.fresh_big_usdc * h,
+        young_days=t.young_days * 2,
+        young_max_markets=t.young_max_markets * 2,
+        young_usdc=t.young_usdc * h,
+        longshot_price=Decimal("0.35"),
+        longshot_usdc=t.longshot_usdc * h,
+        longshot_max_markets=t.longshot_max_markets * 2,
+        focus_share=Decimal("0.6"),
+        focus_max_markets=t.focus_max_markets * 2,
+        focus_usdc=t.focus_usdc * h,
+        thin_max_markets=t.thin_max_markets * 2,
+        thin_usdc=t.thin_usdc * h,
+        whale_longshot_price=Decimal("0.40"),
+        whale_longshot_usdc=t.whale_longshot_usdc * h,
+        sharp_usdc=t.sharp_usdc * h,
+        sweep_usdc=t.sweep_usdc * h,
+        min_usdc=min(t.min_usdc, Decimal(500)),
+    )
+
+
+def evaluate_tiered(f: TradeFeatures, watch: bool, t: RuleThresholds | None = None) -> list[str]:
+    """Default rules everywhere; in watch markets also the widened rules, prefixed ``W_``."""
+    t = t or RuleThresholds()
+    fired = evaluate(f, t)
+    if watch:
+        fired += ["W_" + r for r in evaluate(f, widened(t)) if r not in fired]
+    return fired
+
+
+@dataclass
+class FreshCluster:
+    """C1: several young wallets buying the same outcome of one market inside a window."""
+
+    max_age_hours: float = float(_env_dec("RULE_CLUSTER_AGE_HOURS", "168"))
+    min_wallets: int = int(_env_dec("RULE_CLUSTER_MIN_WALLETS", "3"))
+    min_usdc: Decimal = _env_dec("RULE_CLUSTER_USDC", "5000")
+    window_s: int = int(_env_dec("RULE_CLUSTER_WINDOW_SECONDS", "86400"))
+    _seen: dict[tuple[str, str], dict[str, tuple[int, Decimal]]] = field(default_factory=dict)
+
+    def observe(
+        self, market: str, outcome: str, wallet: str, ts: int, usdc: Decimal, age_h: float | None
+    ) -> bool:
+        if age_h is None or age_h > self.max_age_hours:
+            return False
+        bucket = self._seen.setdefault((market, outcome), {})
+        prev = bucket.get(wallet)
+        bucket[wallet] = (ts, (prev[1] if prev else Decimal(0)) + usdc)
+        for w, (seen_ts, _) in list(bucket.items()):
+            if ts - seen_ts > self.window_s:
+                del bucket[w]
+        if len(self._seen) > 20000:
+            self._seen.clear()
+        total = sum((v[1] for v in bucket.values()), Decimal(0))
+        return len(bucket) >= self.min_wallets and total >= self.min_usdc

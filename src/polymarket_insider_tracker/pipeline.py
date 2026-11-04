@@ -38,8 +38,14 @@ from polymarket_insider_tracker.detector.evaluation_clock import (
     read_evaluation_instant,
     system_clock,
 )
-from polymarket_insider_tracker.detector.insider_rules import RuleThresholds, TradeFeatures
-from polymarket_insider_tracker.detector.insider_rules import evaluate as evaluate_rules
+from polymarket_insider_tracker.detector.insider_rules import (
+    FreshCluster,
+    RuleThresholds,
+    TradeFeatures,
+    evaluate_tiered,
+    is_watch_market,
+    widened,
+)
 from polymarket_insider_tracker.detector.models import RiskAssessment
 from polymarket_insider_tracker.detector.scorer import SignalBundle
 from polymarket_insider_tracker.ingestor.alert_path_health import AlertPathHealthMonitor
@@ -205,6 +211,7 @@ class Pipeline:
         # Local fork: TRADE_WORKERS>0 scores trades on a worker pool so a slow market or
         # RPC lookup never stalls acquisition. 0 keeps upstream's inline processing.
         self._history_cache: dict[str, tuple[float, WalletHistory]] = {}
+        self._fresh_cluster = FreshCluster()
         self._history_client: httpx.AsyncClient | None = None
         self._trade_workers = max(0, int(os.environ.get("TRADE_WORKERS", "0") or 0))
         self._trade_queue: asyncio.Queue[TradeEvent] | None = None
@@ -842,8 +849,10 @@ class Pipeline:
         if os.environ.get("INSIDER_RULES", "") != "1" or trade.side != "BUY":
             return []
         notional = trade.price * trade.size
-        thresholds = RuleThresholds()
-        if notional < thresholds.min_usdc or trade.price >= thresholds.max_price:
+        watch = is_watch_market(trade.event_title, trade.market_slug, trade.event_slug)
+        base = RuleThresholds()
+        floor = widened(base) if watch else base
+        if notional < floor.min_usdc or trade.price >= floor.max_price:
             return []
         try:
             history = await self._wallet_history(trade.wallet_address)
@@ -862,7 +871,16 @@ class Pipeline:
             side=trade.side,
             event_slug=trade.event_slug,
         )
-        fired = evaluate_rules(features, thresholds)
+        fired = evaluate_tiered(features, watch, base)
+        if self._fresh_cluster.observe(
+            trade.market_id.lower(),
+            trade.outcome,
+            trade.wallet_address.lower(),
+            int(trade.timestamp.timestamp()),
+            notional,
+            features.wallet_age_hours,
+        ):
+            fired.append("C1_fresh_cluster")
         if fired:
             logger.info(
                 "insider rule fired: %s wallet=%s market=%s usdc=%s price=%s age_h=%.1f mkts=%d",
@@ -1002,6 +1020,8 @@ def _append_rule_hit(trade: TradeEvent, fired: list[str], f: TradeFeatures) -> N
     """One JSON line per fired trade, for `polywatch rules` and later tuning."""
     row = {
         "ts": trade.timestamp.isoformat(),
+        "seen": datetime.now(UTC).isoformat(timespec="seconds"),
+        "lag_s": round(datetime.now(UTC).timestamp() - trade.timestamp.timestamp(), 1),
         "rules": fired,
         "wallet": trade.wallet_address,
         "market": trade.market_id,
