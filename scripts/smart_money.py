@@ -32,6 +32,29 @@ async def get(client: httpx.AsyncClient, path: str, params: dict) -> dict:
     return {}
 
 
+def flagged_wallets() -> set[str]:
+    """Wallets the insider rules flagged: live rule hits plus the newest election sweep."""
+    import glob
+    import os
+
+    out: set[str] = set()
+    hits = os.path.expanduser("~/.polywatch/rule_hits.jsonl")
+    if os.path.exists(hits):
+        with open(hits) as fh:
+            for line in fh:
+                try:
+                    out.add(json.loads(line)["wallet"].lower())
+                except (ValueError, KeyError):
+                    continue
+    sweeps = sorted(glob.glob(os.path.expanduser("~/.polywatch/election_sweep_*.json")))
+    if sweeps:
+        with open(sweeps[-1]) as fh:
+            for h in json.load(fh).get("hits", []):
+                if h.get("rules"):
+                    out.add(h["wallet"].lower())
+    return out
+
+
 async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=10)
@@ -48,6 +71,8 @@ async def main() -> None:
             for row in body.get("data") or []:
                 w = wallets.setdefault(row["user_id"], {"name": row.get("user_name"), "pnl": {}})
                 w["pnl"][period] = round(row.get("pnl") or 0)
+        for w in flagged_wallets():
+            wallets.setdefault(w, {"name": None, "pnl": {}, "flagged": True})["flagged"] = True
         sem = asyncio.Semaphore(8)
 
         async def positions(w: str) -> list[dict]:
@@ -72,6 +97,8 @@ async def main() -> None:
             g = groups[(p["condition_id"], p["outcome"])]
             g.update(title=p["title"], outcome=p["outcome"], px=px, end=end, slug=p["event_slug"])
             g["wallets"].append(wallets[w]["name"] or w[:10])
+            g.setdefault("flagged", 0)
+            g["flagged"] += 1 if wallets[w].get("flagged") else 0
             g["value"] += p["current_value"]
             g["cost"] += p.get("total_cost_usdc") or 0
             g["shares"] += p.get("current_size") or 0
@@ -85,6 +112,7 @@ async def main() -> None:
                 "now_px": g["px"],
                 "avg_entry": round(g["cost"] / g["shares"], 3) if g["shares"] else None,
                 "top_wallets": len(g["wallets"]),
+                "insider_flagged": g.get("flagged", 0),
                 "names": g["wallets"][:8],
                 "value_usdc": round(g["value"]),
                 "against": sum(len(groups[k]["wallets"]) for k in opp),
@@ -93,7 +121,12 @@ async def main() -> None:
             }
         )
     out.sort(key=lambda x: (-(x["top_wallets"] - x["against"]), -x["value_usdc"]))
-    json.dump({"wallets": len(wallets), "picks": out[:60]}, sys.stdout, indent=1)
+    flagged = sorted((x for x in out if x["insider_flagged"]), key=lambda x: -x["value_usdc"])
+    json.dump(
+        {"wallets": len(wallets), "picks": out[:60], "flagged_picks": flagged[:40]},
+        sys.stdout,
+        indent=1,
+    )
 
 
 if __name__ == "__main__":
