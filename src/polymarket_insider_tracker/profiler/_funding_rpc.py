@@ -43,6 +43,7 @@ TRANSFER_EVENT_TOPIC = HexStr("0x" + TRANSFER_EVENT_SIGNATURE.hex().removeprefix
 # llamarpc) cap the range at 10_000 blocks per call; pick a window slightly
 # under the cap so off-by-one differences between providers don't trip us up.
 DEFAULT_CHUNK_SIZE_BLOCKS = 9_000
+HEAD_SAFETY_BLOCKS = 64
 # Polygon block time is ~2.0s. publicnode (the most common free RPC) prunes
 # log history aggressively — empirically only ~100k blocks (~55 hours) are
 # served before requests start returning "History has been pruned". We default
@@ -203,6 +204,12 @@ class TransferLogScanner:
             )
             return logs, False
         except Exception as e:
+            if "invalid block range" in str(e) and chunk_end - chunk_start > HEAD_SAFETY_BLOCKS:
+                # Load-balanced public RPC nodes lag each other: a toBlock at one node's
+                # head is out of range on the next. Retry once a few blocks back.
+                return await self._fetch_chunk_with_handling(
+                    contract_address, topics, chunk_start, chunk_end - HEAD_SAFETY_BLOCKS, to_address
+                )
             if is_pruned_history_error(e):
                 logger.info(
                     "eth_getLogs chunk %d-%d outside archive horizon for %s; stopping trace",

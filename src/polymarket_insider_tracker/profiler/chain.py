@@ -14,7 +14,9 @@ import logging
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+
+import httpx
 from decimal import Decimal
 
 from eth_typing import ABI
@@ -508,21 +510,30 @@ class PolygonClient:
                 gas_price=Decimal(data["gas_price"]),
             )
 
-        # Check if wallet has any transactions
-        nonce = await self.get_transaction_count(address)
-        if nonce == 0:
-            await self._set_cached(cache_key, "null", ttl=60)  # Short TTL for empty
+        # Polymarket traders are proxy contract wallets: their on-chain nonce says nothing
+        # about age, and plain RPC has no "first transaction" lookup. Use the wallet's
+        # first Polymarket activity from the public data API as its first-seen time.
+        first = await _first_polymarket_activity(address)
+        if first is None:
+            await self._set_cached(cache_key, "null", ttl=300)
             return None
-
-        # Note: Getting the actual first transaction requires using an indexer
-        # or scanning blocks, which is expensive. For now, we'll return None
-        # and recommend using an indexer service for production.
-        logger.warning(
-            "get_first_transaction requires an indexer service for %s (nonce=%d)",
-            address,
-            nonce,
+        await self._set_cached(
+            cache_key,
+            json.dumps(
+                {
+                    "hash": first.hash,
+                    "block_number": first.block_number,
+                    "timestamp": first.timestamp.isoformat(),
+                    "from_address": first.from_address,
+                    "to_address": first.to_address,
+                    "value": str(first.value),
+                    "gas_used": first.gas_used,
+                    "gas_price": str(first.gas_price),
+                }
+            ),
+            ttl=86400,
         )
-        return None
+        return first
 
     async def get_wallet_info(self, address: str) -> WalletInfo:
         """Get aggregated wallet information.
@@ -558,3 +569,32 @@ class PolygonClient:
             return True
         except RPCError:
             return False
+
+
+POLYMARKET_ACTIVITY_URL = "https://data-api.polymarket.com/v2/activity"
+
+
+async def _first_polymarket_activity(address: str) -> Transaction | None:
+    """Oldest Polymarket activity for a wallet, or None when it has none or the call fails."""
+    params = {"user": address.lower(), "limit": "1", "sortDirection": "ASC"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(POLYMARKET_ACTIVITY_URL, params=params)
+            resp.raise_for_status()
+            rows = resp.json().get("data") or []
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning("first-activity lookup failed for %s: %s", address, redact_exception_message(e))
+        return None
+    if not rows or not rows[0].get("timestamp"):
+        return None
+    row = rows[0]
+    return Transaction(
+        hash=str(row.get("transaction_hash") or ""),
+        block_number=0,
+        timestamp=datetime.fromtimestamp(int(row["timestamp"]), UTC),
+        from_address=address,
+        to_address=None,
+        value=Decimal(0),
+        gas_used=0,
+        gas_price=Decimal(0),
+    )
