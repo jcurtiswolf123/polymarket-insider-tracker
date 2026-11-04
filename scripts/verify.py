@@ -271,10 +271,7 @@ def _render_gate_output(gate: GateResult) -> list[str]:
 def _render_gate_status(gate: GateResult) -> str:
     if gate.status == "passed":
         return f"[PASS] {gate.id} ({gate.duration_seconds:.2f}s)"
-    return (
-        f"[FAIL] {gate.id} (exit {gate.exit_code}, "
-        f"{gate.duration_seconds:.2f}s): {gate.summary}"
-    )
+    return f"[FAIL] {gate.id} (exit {gate.exit_code}, {gate.duration_seconds:.2f}s): {gate.summary}"
 
 
 def _render_gate(gate: GateResult) -> list[str]:

@@ -95,7 +95,6 @@ def size_group_score(
     return float(capped), 1
 
 
-
 def fresh_wallet_scoring_enabled() -> bool:
     """Local fork switch: let the fresh-wallet group score before an upstream T027 PASS.
 
@@ -133,6 +132,7 @@ def combined_group_score(
     score = apply_multi_signal_bonus(score, groups)
     capped = min(score, Decimal(1)).quantize(SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
     return float(capped), groups
+
 
 def _warn_deprecated_weights(surface: str) -> None:
     warnings.warn(

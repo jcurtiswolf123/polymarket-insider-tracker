@@ -142,10 +142,13 @@ def grid_available(
     for volume, notional in product(VOLUMES, notionals):
         market = selector(volume)
         if market is not None:
-            yield score(
-                gated_confidence(wallet, notional, proposed=proposed),
-                size_signal(market, notional, volume_passed=volume_passed),
-            ), notional
+            yield (
+                score(
+                    gated_confidence(wallet, notional, proposed=proposed),
+                    size_signal(market, notional, volume_passed=volume_passed),
+                ),
+                notional,
+            )
 
 
 def grid_unavailable(
@@ -153,10 +156,13 @@ def grid_unavailable(
 ) -> Iterator[tuple[Decimal, Decimal]]:
     market = UNAVAILABLE[regime - 2][1]
     for notional in notionals:
-        yield score(
-            gated_confidence(wallet, notional, proposed=proposed),
-            size_signal(market, notional, volume_passed=False),
-        ), notional
+        yield (
+            score(
+                gated_confidence(wallet, notional, proposed=proposed),
+                size_signal(market, notional, volume_passed=False),
+            ),
+            notional,
+        )
 
 
 def grid(

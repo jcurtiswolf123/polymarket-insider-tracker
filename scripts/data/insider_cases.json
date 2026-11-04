@@ -1,0 +1,478 @@
+[
+  {
+    "name": "Nobel Peace Prize 2025 (Machado) - dirtycup and 6741",
+    "bet_date": "2025-10-09 22:42 UTC to 2025-10-10 ~04:00 UTC (API: 6741 first buy 22:42:57 UTC Oct 9; dirtycup 03:29 UTC Oct 10)",
+    "news_date": "2025-10-10 (prize announced ~09:00 UTC)",
+    "market_question": "Will Maria Corina Machado win the Nobel Peace Prize in 2025?",
+    "market_slug": "nobel-peace-prize-winner-2025",
+    "wallets": [
+      "0x234cc49e43dff8b3207bbd3a8a2579f339cb9867 (dirtycup)",
+      "0xa430506774f9efaf39903ee7e0db1351f66891ca (6741)"
+    ],
+    "usernames": [
+      "dirtycup",
+      "6741"
+    ],
+    "side": "Yes (Machado)",
+    "entry_price": "API: 6741 bought Yes at 0.048 to 0.30 (Oct 9 evening UTC); dirtycup bought Yes at ~0.68-0.70 after the surge (Oct 10 03:29 UTC). Market had sat at ~1-4% for months.",
+    "usd_bet": "API: dirtycup single fills of $7,204 and $6,061 at 03:29 UTC; 6741 $922 + $1,500 in first fills. Totals not published in sources.",
+    "profit": "Decrypt: one trader redeemed $80,000 (account <10 days old). Bloomberg (via secondary summaries): dirtycup profit >$30,000, 6741 >$50,000; one summary says ~$90,000 combined for three accounts.",
+    "why_suspicious": [
+      "Odds jumped from ~1-4% to over 70% roughly 10-11 hours before announcement (Decrypt)",
+      "dirtycup opened account in Oct 2025 with no prior bets (Bloomberg via secondary)",
+      "Nobel Institute said it was looking into a possible leak; Norwegian authorities probed"
+    ],
+    "sources": [
+      "https://decrypt.co/343840/nobel-peace-prize-organizers-intestigating-polymarket-insider-trades",
+      "https://www.bloomberg.com/news/articles/2025-10-10/unusual-bets-on-nobel-peace-prize-winner-prompt-probe-into-leaks",
+      "https://www.theblock.co/post/374199/officials-probe-polymarket-over-suspicious-trades-predicting-nobel-peace-prize-winner-reports"
+    ],
+    "address_confirmed": true,
+    "notes": "Sources name usernames only; addresses came from gamma-api public-search (search_profiles=true) and were matched by on-chain activity on this exact market (data-api v2 activity). Bloomberg page not fetched directly (paywall); profit figures for dirtycup/6741 are from search summaries of Bloomberg, not read first-hand."
+  },
+  {
+    "name": "AlphaRaccoon - Google Year in Search 2025 (d4vd) - Google engineer charged",
+    "bet_date": "2025-10-15 to 2025-12-04 (API: first Year-in-Search buys 2025-11-25; d4vd Yes at 0.14)",
+    "news_date": "2025-12-04 (Google published list; flagged on X/Forbes 2025-12-04 to 12-06); charged 2026-05-27",
+    "market_question": "#1 Searched Person on Google this year? / Top 5 Most Searched People on Google 2025 (incl. 'Will d4vd rank in Google's Top 5 Most Searched People'), 23+ Year in Search contracts; also Gemini 3.0 release-date markets",
+    "market_slug": "1-searched-person-on-google-this-year; top-5-most-searched-people-on-google-2025; gemini-3pt0-released-by",
+    "wallets": [
+      "0xee50a31c3f5a7c77824b12a941a54388a2827ed6 (profile named '0xafEe'; resolved via gamma-api, NOT printed in any source)"
+    ],
+    "usernames": [
+      "AlphaRaccoon (renamed to '0xafEe' after Dec 2025 flagging)"
+    ],
+    "side": "Mixed Yes/No across 23+ contracts; d4vd Top-5 Yes at 0.14; Pope Leo #1 No at ~0.60-0.61",
+    "entry_price": "d4vd ~0.14 (API). Gemini 3.0 'No' at 0.66 reported by a Chinese-language outlet (unverified).",
+    "usd_bet": "CFTC/press: ~$2.75M bets reported (secondary); API shows single fills up to $68,584 (Pope Leo No at 0.61). Earlier report: $10,647 turned to ~$200K on d4vd.",
+    "profit": "~$1.2M (CFTC complaint ~1.2M); Gizmodo/Forbes initial ~$1.15M; >$150K earlier on Gemini 3.0 timing",
+    "why_suspicious": [
+      "22 of 23 Google-related markets correct (Forbes via Gizmodo)",
+      "Prosecutors: employee accessed confidential Year in Search data on 2025-10-15 and 2025-11-27 via internal tool",
+      "CFTC: bought Yes/No on at least 23 contracts with near-perfect accuracy; account funded from 'Wallet-0xAf6'; later renamed handle",
+      "Prior $150K+ win on Gemini 3.0 launch date"
+    ],
+    "sources": [
+      "https://www.cftc.gov/PressRoom/PressReleases/9237-26",
+      "https://www.cftc.gov/media/14046/ENF_SpagnuoloComplaint052726/download",
+      "https://gizmodo.com/polymarket-user-accused-of-1-million-insider-trade-on-google-search-markets-2000696258",
+      "https://www.theblock.co/post/402806/google-engineer-insider-trading-polymarket"
+    ],
+    "address_confirmed": true,
+    "notes": "CFTC complaint redacts the wallet as 'Wallet-0xAf6' (the funding wallet) and does not print the Polymarket address. Press cites handle '0xafEe'. gamma-api profile '0xafEe' resolves to 0xee50a31c...; account's earliest activity is 2024-05-15 (CFTC: AlphaRaccoon opened May 2024) and it holds Year-in-Search and gemini-3pt0 positions. Strong match but the address-to-person link is my inference, not a published statement. Defendant Michele Spagnuolo pleaded not guilty."
+  },
+  {
+    "name": "Maduro captured - 0x31a5 wallet (and 0xa72D, SBet365)",
+    "bet_date": "2025-12-27 to 2026-01-03 (API: big Maduro-out buys Dec 31, Jan 1 23:57 UTC, Jan 2 16:49 UTC, Jan 3 01:38 UTC)",
+    "news_date": "2026-01-03 (US operation / Maduro captured)",
+    "market_question": "Maduro out by January 31, 2026? (also US forces in Venezuela by January 31, 2026?; Trump invokes War Powers against Venezuela by January 31?)",
+    "market_slug": "maduro-out-in-2025",
+    "wallets": [
+      "0x31a56e9E690c621eD21De08Cb559e9524Cdb8eD9",
+      "0xa72D... (only prefix published; full address unknown)"
+    ],
+    "usernames": [
+      "SBet365 (address unknown)",
+      "0xa72DB1 (as shown by one outlet; address unknown)"
+    ],
+    "side": "Yes",
+    "entry_price": "avg ~7.2% (4pillars); API fills at 0.067-0.089 on Maduro out",
+    "usd_bet": "0x31a5: ~$32,528 deployed (4pillars), ~$34,000 (Lookonchain via press); ~60% ($20K) bought Jan 3 01:38-02:58 UTC; SBet365 $25,000; 0xa72D $5,800",
+    "profit": "0x31a5 $404,221 net (4pillars) / ~$409,900 (Lookonchain); SBet365 ~$145,600; 0xa72D ~$75,000 (unclear if profit or value); combined $630,484",
+    "why_suspicious": [
+      "Wallets created and pre-funded days before",
+      "Only Venezuela/Maduro or US-military markets traded",
+      "Low-odds entry split into several buys; price barely moved on the final $20K",
+      "Withdrew proceeds and went inactive; 0x31a5 account later disappeared (Cointelegraph)"
+    ],
+    "sources": [
+      "https://research.4pillars.io/en/research/unmasking-the-maduro-insider-on-polymarket",
+      "https://www.cryptoninjas.net/news/630k-insider-bet-exposed-as-polymarket-wallets-predicted-maduros-fall-hours-before-arrest/",
+      "https://cointelegraph.com/news/polymarket-user-who-won-400k-on-maduro-ouster-bet-quietly-disappears",
+      "https://cointelegraph.com/news/trump-venezuela-leaker-jail-polymarket-accounts-go-quiet"
+    ],
+    "address_confirmed": true,
+    "notes": "Full 0x31a5 address is printed in the 4pillars research page and confirmed active via data-api (17 rows, Maduro-out buys). Lookonchain's original X post not fetched. 0xa72D and SBet365 addresses unknown. Bubblemaps disputed a rumored link to a WLFI cofounder (Cointelegraph)."
+  },
+  {
+    "name": "Maduro raid - US Army Master Sgt. Gannon Van Dyke indicted (DOJ)",
+    "bet_date": "2025-12-27 to 2026-01-02 (about 13 bets per indictment reporting)",
+    "news_date": "2026-04-23 (indictment unsealed, SDNY)",
+    "market_question": "Maduro out by January 31, 2026?; US forces in Venezuela by January 31, 2026?",
+    "market_slug": "maduro-out-in-2025",
+    "wallets": [
+      "Not named in sources. 0x31a56e9E690c621eD21De08Cb559e9524Cdb8eD9 is a probable match (inference only, see notes)"
+    ],
+    "usernames": [],
+    "side": "Yes",
+    "entry_price": "not disclosed in source",
+    "usd_bet": "~$33,000 total",
+    "profit": ">$409,000 winnings",
+    "why_suspicious": [
+      "Charged with fraud and unlawful use of confidential government info; allegedly part of the Maduro operation",
+      "Created Polymarket account Dec 26 via VPN; on Jan 6 asked Polymarket to delete account",
+      "Signed NDAs"
+    ],
+    "sources": [
+      "https://taskandpurpose.com/news/special-forces-polymarket-maduro-venezuela/",
+      "https://www.justice.gov/usao-sdny/media/1437781/dl",
+      "https://www.pbs.org/newshour/nation/u-s-soldier-charged-with-using-classified-intel-to-win-more-than-400k-in-bet-on-maduro-raid"
+    ],
+    "address_confirmed": false,
+    "notes": "The 0x31a5 link is MY INFERENCE: account created Dec 26 vs first 0x31a5 trade Dec 27 05:05 UTC; ~$33K bet vs $32.5K; >$409K vs $404-410K profit. No source I read states the wallet. The justice.gov indictment PDF was not fetched. Treat as same wallet only after reading the indictment."
+  },
+  {
+    "name": "US strikes Iran Feb 28 2026 - six fresh wallets (Bubblemaps)",
+    "bet_date": "2026-02-16 to 2026-02-28 (API: 0x1caA first buy 2026-02-25 21:40 UTC at 0.10; Neodbs 2026-02-26 22:53 UTC; Dicedicedice 2026-02-28 00:07 UTC)",
+    "news_date": "2026-02-28 (US and Israel strikes on Iran)",
+    "market_question": "US strikes Iran by February 28, 2026?",
+    "market_slug": "us-strikes-iran-by",
+    "wallets": [
+      "0x1caA6a7ad0c6916aeF7b67946De2e57Ad24846a0",
+      "0x38745db27f7360a287f6ca3c9b6a6a9c76149801 (Planktonbets)",
+      "0xdde15ebd95330ce69136dc0ccd810d22382e02c5 (Dicedicedice)",
+      "0x56efadc9defe5b7a21af751e0d026f2cf54136db (Neodbs)"
+    ],
+    "usernames": [
+      "Planktonbets",
+      "Dicedicedice",
+      "Neodbs",
+      "nothingeverhappens911 (address unknown)",
+      "Anon (address unknown)"
+    ],
+    "side": "Yes",
+    "entry_price": "0x1caA 10.8c; Planktonbets 13.2c; Dicedicedice 20c; Neodbs 10c; nothingeverhappens911 19c; Anon 18c",
+    "usd_bet": "0x1caA ~$60,816; Neodbs $9,884; Planktonbets ~$25K+ initial (API: $12,417 + others; total not published); others not published",
+    "profit": "Polymarket profile figures (The Block): total $989,191 = 0x1caA $494,375; Planktonbets $173,907; Dicedicedice $119,964; Neodbs $88,954; nothingeverhappens911 $66,436; Anon $45,556. Bubblemaps said $1.2M.",
+    "why_suspicious": [
+      "Most accounts created and funded within 24h of the attack",
+      "All bought the single Feb 28 contract hours before strikes",
+      "400-900% returns, positions exited fully",
+      "Bubblemaps: 'suspected insiders' (cannot be certain)"
+    ],
+    "sources": [
+      "https://www.theblock.co/post/391650/fresh-accounts-netted-1-million-on-polymarket-hours-before-us-airstrikes-on-iran-bubblemaps",
+      "https://www.coindesk.com/markets/2026/02/28/suspected-insiders-make-over-usd1-2-million-on-polymarket-ahead-of-u-s-strike-on-iran",
+      "https://www.bloomberg.com/news/articles/2026-02-28/polymarket-iran-bets-hit-529-million-as-new-wallets-draw-notice",
+      "https://www.forbes.com/sites/boazsobrado/2026/03/02/fresh-wallets-made-12m-on-polymarket-hours-before-iran-airstrikes/"
+    ],
+    "address_confirmed": true,
+    "notes": "0x1caA... is printed in The Block and confirmed via data-api. The other three addresses were resolved from usernames by gamma-api and matched on-chain to the article's figures (Neodbs: $9,883.75 buy at 0.10, $98,837.50 redeem; Planktonbets: 200,747-share redeem; Dicedicedice: Yes at 0.20 on the Feb 28 market). Forbes page returned 403, not read."
+  },
+  {
+    "name": "Magamyman - Iran strike and Khamenei ouster bets",
+    "bet_date": "2026-02-16 to 2026-02-28 (API)",
+    "news_date": "2026-02-28",
+    "market_question": "US strikes Iran by February 28, 2026? ; Khamenei out as Supreme Leader of Iran by March 31?",
+    "market_slug": "us-strikes-iran-by",
+    "wallets": [
+      "0x4dfd481c16d9995b809780fd8a9808e8689f6e4a (resolved from username; not printed in sources)"
+    ],
+    "usernames": [
+      "Magamyman"
+    ],
+    "side": "Yes",
+    "entry_price": "API: Feb-28 Yes at 0.14-0.15 on Feb 16; Khamenei-out Yes at 0.14 on Feb 16; heavy trading in/out through Feb 28",
+    "usd_bet": "API single fills up to ~$43,800; Khamenei-out buy $20,075 on Feb 16. German report: $87,000 invested.",
+    "profit": "Fast Company/Yahoo: >$553,000 total; >$195,000 on Feb-28 strike; ~$123,000 on Khamenei ouster. Rep. Levin cited $515,000 in one day.",
+    "why_suspicious": [
+      "Rep. Levin: first trade 71 minutes before strikes became public (Fast Company/Yahoo)",
+      "Congressional Democrats asked for answers",
+      "Source caveat: no proof of inside knowledge"
+    ],
+    "sources": [
+      "https://finance.yahoo.com/news/mystery-trader-made-553-000-193000057.html",
+      "https://www.ctpublic.org/2026-03-01/prediction-market-trader-magamyman-made-553-000-on-death-of-irans-supreme-leader",
+      "https://foxbusiness.com/markets/blockchain-analysts-say-traders-may-have-used-insider-information-profit-iran-conflict-bets"
+    ],
+    "address_confirmed": false,
+    "notes": "Weakest of the address matches. Username 'Magamyman' resolves to 0x4dfd... with Feb-2026 Iran/Khamenei positions and a $143,393 Khamenei redeem, but account dates to Oct 2024 with big-size trading, so it is not a fresh wallet, and no source ties it to this address. Verify against Polymarket Analytics before use. Figures conflict across outlets ($195K vs $515K vs $553K)."
+  },
+  {
+    "name": "ZachXBT / Axiom expos\u00e9 market - 12 suspected insider wallets",
+    "bet_date": "2026-02-23 to 2026-02-26 (Axiom odds rose Feb 25)",
+    "news_date": "2026-02-26 (ZachXBT published)",
+    "market_question": "Which crypto company will ZachXBT expose for insider trading? (exact title not confirmed)",
+    "market_slug": null,
+    "wallets": [],
+    "usernames": [
+      "predictorxyz (address unknown; gamma search returned no profile)"
+    ],
+    "side": "Yes (Axiom)",
+    "entry_price": "predictorxyz avg $0.14 for 477,415 shares; second-largest holder (anonymous) 109,450 shares at $0.33 (CoinDesk)",
+    "usd_bet": "predictorxyz ~$65,800; 12 wallets ~ $400,000 combined (The Block/Lookonchain)",
+    "profit": "predictorxyz >$411,000 (returned $477,176); 12 wallets >$1M; Polysights: 5 wallets turned ~$50K into ~$266K",
+    "why_suspicious": [
+      "Lookonchain: 12 'suspected insider wallets' bet before the reveal",
+      "Defioasis: 3 wallets with >$100K profit traded only this single market",
+      "ZachXBT contacted Axiom before publishing, so several people knew",
+      "Axiom said it was 'shocked and disappointed'"
+    ],
+    "sources": [
+      "https://www.theblock.co/news/ecosystems/2026-02-26-suspected-inside-traders-betting-axiom-insider-trading-probe-rake-1-million-lookonchain-391484",
+      "https://www.coindesk.com/markets/2026/02/27/polymarket-bettors-appear-to-have-insider-traded-on-a-market-designed-to-catch-insider-traders",
+      "https://cointelegraph.com/news/suspected-insider-1-2m-zachxbt-axiom-expose"
+    ],
+    "address_confirmed": false,
+    "notes": "No 0x addresses in any article read; Lookonchain posted addresses as an image on X (not fetched). Slug not found: gamma search returned only sibling markets what-hour-will-zachxbt-release-his-investigation and how-many-views-will-zachxbts-investigation-post-get-on-x, not the which-company market. Lookonchain X post and the Dune dashboard are the next place to look."
+  },
+  {
+    "name": "US-Iran ceasefire April 7 2026 - fresh wallets (Lookonchain, others)",
+    "bet_date": "2026-04-06 20:50 UTC to 2026-04-07 ~14:00 UTC",
+    "news_date": "2026-04-07 (Trump Truth Social post ~22:32 UTC)",
+    "market_question": "US x Iran ceasefire by April 7?",
+    "market_slug": "us-x-iran-ceasefire-by",
+    "wallets": [
+      "0x8039ad26298d7847799899808554474b7fa57421",
+      "0x755519c3a4a69469f488197fbd39b12f70b3ecc5"
+    ],
+    "usernames": [
+      "25xp (address unknown)",
+      "fernandoinfante and S7777 (named by PolyAlertHub per bitcoin.com; addresses not published)"
+    ],
+    "side": "Yes",
+    "entry_price": "2.9% to 10.3% implied (Cointelegraph); API: 0x8039 buys at 0.036-0.060, 0x7555 at 0.027-0.032",
+    "usd_bet": "API: 0x8039 $10,000 buy at 0.059 on Apr 7 10:01 UTC; 0x7555 ~$3,500 in first fills Apr 6 evening. Reported wagers: one wallet ~$72,000",
+    "profit": "Cointelegraph: @25xp $200,525; 0x8039 $158,600; 0x7555 $125,450; combined $484,575. Other outlets $375K-$663K.",
+    "why_suspicious": [
+      "Wallets created and funded the day of the bet; one had no prior onchain activity",
+      "Low-probability Yes bought ~8.5 hours before Trump's post",
+      "50+ new accounts reported by one outlet; Polymarket labelled event 'disputed'"
+    ],
+    "sources": [
+      "https://cointelegraph.com/news/3-polymarket-traders-made-a-timely-bet-on-a-us-iran-ceasefire",
+      "https://news.bitcoin.com/onchain-data-flags-suspicious-bets-on-polymarket-and-hyperliquid-ahead-of-trumps-iran-deal",
+      "https://www.euronews.com/2026/04/09/newly-made-polymarket-accounts-won-massively-on-us-iran-ceasefire-bets"
+    ],
+    "address_confirmed": true,
+    "notes": "Both addresses printed in Cointelegraph (citing Lookonchain) and confirmed active on the ceasefire market via data-api. Bitcoin.com says these figures were unverified as of Apr 8. A $60M Hyperliquid oil short was also flagged by an X user (separate market)."
+  },
+  {
+    "name": "Biden last-day pardons - two linked wallets (Bubblemaps)",
+    "bet_date": "2025-01-20 (Hunter Biden bet ~Dec 2024)",
+    "news_date": "2025-01-20 (pardons); flagged 2026-04-16",
+    "market_question": "Who will Biden pardon? (Jim Biden, Adam Schiff, Liz Cheney, Adam Kinzinger, Hunter Biden)",
+    "market_slug": "who-will-biden-pardon (event slug found by search; per-person market slugs not verified)",
+    "wallets": [],
+    "usernames": [],
+    "side": "Yes on each pardon",
+    "entry_price": "Jim Biden 11%; Schiff 6%",
+    "usd_bet": "Jim Biden bet $21,711 returned $198,220 within minutes",
+    "profit": "~$316,346 from five bets (NPR/Bubblemaps) / ~$320,000 (Decrypt)",
+    "why_suspicious": [
+      "Right on 4 of 5 final-hours pardons plus Hunter Biden a month earlier",
+      "Added to positions as odds fell near zero",
+      "Two accounts linked by a shared Kraken deposit address (Bubblemaps)"
+    ],
+    "sources": [
+      "https://decrypt.co/364660/suspicious-polymarket-trader-320k-2025-biden-pardons",
+      "https://www.npr.org/2026/04/16/nx-s1-5786580/a-polymarket-trader-made-300-000-betting-on-bidens-pardons"
+    ],
+    "address_confirmed": false,
+    "notes": "No wallet or username published in Decrypt or the search summaries of NPR (NPR page fetch timed out). Bubblemaps X post of 2026-04-16 is the likely place for addresses. Older than the 6-month window but the flag is April 2026."
+  },
+  {
+    "name": "World Cup 2026 - mintblade, GRIMDRIP, endlessFate ($24.25M)",
+    "bet_date": "2026-06-11 to ~2026-06-20 (API: endlessFate first big buy 06-12 01:54 UTC; mintblade 06-15 21:54 UTC; GRIMDRIP 06-18 15:26 UTC)",
+    "news_date": "2026-06-21 (Lookonchain flag)",
+    "market_question": "World Cup match markets, e.g. 'Will IR Iran win on 2026-06-15?', 'Will Uruguay win on 2026-06-15?', 'Will Czechia win on 2026-06-18?', 'Will Korea Republic win on 2026-06-11?', 'Will United States vs. Paraguay end in a draw?'",
+    "market_slug": "fifwc-irn-nzl-2026-06-15; fifwc-ksa-ury-2026-06-15; fifwc-cze-rsa-2026-06-18; fifwc-kr-cze-2026-06-11; fifwc-usa-par-2026-06-12",
+    "wallets": [
+      "0x96cfcb0c30942cfcd1cdf76c7d408794d66b1acb (mintblade)",
+      "0x3f87d51f27ba6e19ec52aaeebb68559a839c742c (GRIMDRIP)",
+      "0x5e4c3b5b81171e2ca4ab776ac0d6bba787f9dba2 (endlessFate)"
+    ],
+    "usernames": [
+      "mintblade",
+      "GRIMDRIP",
+      "endlessFate"
+    ],
+    "side": "Mixed match outcomes (Win/Draw)",
+    "entry_price": "API: Uruguay win 0.36; Czechia win 0.48; Czechia draw 0.28; Korea win 0.63",
+    "usd_bet": "API single fills ~$50,000-51,000 each; totals not published",
+    "profit": "mintblade $9.24M (5/5); GRIMDRIP $7.6M (2/2); endlessFate $7.41M (6/9); total $24.25M",
+    "why_suspicious": [
+      "All three sent proceeds to Binance via the same deposit address 0xB08B...317D (truncated in source)",
+      "Stopped trading after cashing out",
+      "Lookonchain says shared route may link one operator but does not prove nonpublic information"
+    ],
+    "sources": [
+      "https://cryptoslate.com/?p=543088",
+      "https://cryptonews.net/news/market/33040380/"
+    ],
+    "address_confirmed": true,
+    "notes": "Sources give usernames only. Addresses resolved via gamma-api and matched on-chain: each wallet's first trades are the June 2026 World Cup matches named above, at ~$50K size. I did not read Lookonchain's X post. Strictly this is a suspected single-operator/insider flag; no source says what the information was. A separate account 'fishalive' (~$9M, Spain vs Cape Verde) was noted by CryptoSlate and is not included."
+  },
+  {
+    "name": "Taylor Swift / Travis Kelce engagement (romanticpaul)",
+    "bet_date": "2025-08-25 (API: first buys 19:10 UTC Aug 25 at 0.27-0.41)",
+    "news_date": "2025-08-26 (engagement announced)",
+    "market_question": "Taylor Swift and Travis Kelce engaged in 2025?",
+    "market_slug": "taylor-swift-and-travis-kelce-engaged-in-2025",
+    "wallets": [
+      "0xf5cfe6f998d597085e366f915b140e82e0869fc6 (resolved from username)"
+    ],
+    "usernames": [
+      "RomanticPaul / romanticpaul"
+    ],
+    "side": "Yes",
+    "entry_price": "40c per share (AOL/WSJ); API fills 0.27-0.41",
+    "usd_bet": "$2,046 for 5,180 shares (AOL); a separate unnamed trader staked $12,000",
+    "profit": "~$3,100 (RomanticPaul); unnamed trader ~$40,174",
+    "why_suspicious": [
+      "Bought Monday, odds moved ~25% to 45% before Tuesday's announcement",
+      "Online sleuths linked the account to Swift's guitarist Paul Sidoti; unproven",
+      "WSJ reported scrutiny of well-timed bets"
+    ],
+    "sources": [
+      "https://www.aol.com/polymarket-trader-made-50k-betting-174743223.html",
+      "https://beincrypto.com/taylor-swift-polymarket-engagement-guitarist/",
+      "https://www.bloomberg.com/opinion/newsletters/2025-08-27/the-taylor-swift-wedding-trade"
+    ],
+    "address_confirmed": true,
+    "notes": "WEAK insider case: sources describe speculation, not an insider finding, and the amounts are small. Address resolved from username and matched on the Swift event slug on 2025-08-25 via data-api (the API's title field for that event showed an unrelated tennis title, slug is correct). Beincrypto and Bloomberg pages not read first-hand (403/paywall)."
+  },
+  {
+    "name": "Israel election Oct 27 2026 - 101 fresh accounts",
+    "bet_date": "2026-10-27 (election day, before polls closed)",
+    "news_date": "2026-10-27/28 (exit polls); Polymarket review reported 2026-10-29",
+    "market_question": "Israel Election: Likud # of seats? / Israeli Legislative Election Winner / next prime minister",
+    "market_slug": "israel-election-likud-of-seats; israeli-legislative-election-winner",
+    "wallets": [],
+    "usernames": [],
+    "side": "Yes on Netanyahu / Likud",
+    "entry_price": "not published",
+    "usd_bet": "one NYT-examined wallet: $14,000 placed 12 minutes before polls closed",
+    "profit": "one wallet $42,000; some accounts cashed out >$100,000 combined (Bubblemaps)",
+    "why_suspicious": [
+      "Bubblemaps: 101 accounts first funded on election day before polls closed",
+      "Polysights: massive Yes inflows from fresh wallets",
+      "One wallet created 6 minutes before its bet",
+      "Polymarket reviewing; has referred 90+ accounts to law enforcement overall"
+    ],
+    "sources": [
+      "https://unchainedcrypto.com/polymarket-reviews-dozens-of-new-wallets-behind-well-timed-israel-election-bets-report/",
+      "https://finance.yahoo.com/markets/crypto/articles/polymarket-probes-suspicious-trades-around-190604731.html",
+      "https://www.ynetnews.com/article/94h2sm712"
+    ],
+    "address_confirmed": false,
+    "notes": "Most recent case (6 days old). No addresses or usernames in any page read. NYT piece (the 12-minute wallet) not fetched; reached via a search summary only. Candidate slugs came from gamma search."
+  },
+  {
+    "name": "Bubblemaps nine-wallet military cluster ($2.4M, 98% win rate)",
+    "bet_date": "2026-02 to 2026-04 (around Feb 28 strike, Khamenei killing, ceasefire)",
+    "news_date": "2026-05-18/19 (Bubblemaps post)",
+    "market_question": "US military / Iran markets incl. US strikes Iran by February 28, 2026",
+    "market_slug": "us-strikes-iran-by (inferred from the Feb 28 reference; others not named)",
+    "wallets": [],
+    "usernames": [],
+    "side": "Yes on military action markets",
+    "entry_price": "not published",
+    "usd_bet": "not published",
+    "profit": "$2.4M combined; four wallets ~$400K each on the Feb 28 strike",
+    "why_suspicious": [
+      "Funded via centralized exchanges within a tight window and routed through third-party services",
+      "Minor losing bets on Feb 20 likely to 'avoid attention'",
+      "Bubblemaps CEO: 'symptomatic of someone with an unfair informational advantage'; no definitive proof"
+    ],
+    "sources": [
+      "https://cointelegraph.com/news/bubblemaps-polymarket-cluster-win-military-bets"
+    ],
+    "address_confirmed": false,
+    "notes": "No addresses in the article. Bubblemaps' own post (not fetched) likely lists them."
+  },
+  {
+    "name": "OpenAI browser launch Oct 2025 - 13 new wallets ($309,486)",
+    "bet_date": "October 2025, within the 40 hours before launch (exact dates not in sources read)",
+    "news_date": "October 2025 (exact launch date not in sources read)",
+    "market_question": "OpenAI browser by October 31? (candidate)",
+    "market_slug": "openai-browser-by-october-31 (candidate; other candidates openai-browser-by-october-24, openai-browser-in-2025)",
+    "wallets": [],
+    "usernames": [],
+    "side": "Yes (launch before deadline)",
+    "entry_price": "not published",
+    "usd_bet": "$309,486 combined across 13 wallets; one wallet $40,000",
+    "profit": "not published",
+    "why_suspicious": [
+      "13 wallets with no prior history created within 40 hours of the unveiling (Unusual Whales via Gizmodo)",
+      "Unusual Whales flagged 60 wallets and 77 positions on OpenAI product dates (Sora, GPT-5, browser)"
+    ],
+    "sources": [
+      "https://gizmodo.com/the-great-insider-trading-reckoning-reportedly-hits-openai-2000727838",
+      "https://gizmodo.com/tracking-insider-trading-on-polymarket-is-turning-into-a-business-of-its-own-2000709286"
+    ],
+    "address_confirmed": false,
+    "notes": "Gizmodo page confirms 13 wallets/$309,486 and 'ChatGPT Browser' but gives no wallets or exact dates. Slug is a guess among three candidates found by gamma search."
+  },
+  {
+    "name": "OpenAI employee fired for Polymarket bets (GPT-5.2 launch)",
+    "bet_date": "2025-12-10 to 2025-12-13",
+    "news_date": "2025-12-11 (GPT-5.2 launch per reporting); firing reported 2026-02-27 (Wired)",
+    "market_question": "OpenAI new frontier/large language model release by Dec 13 (exact title not confirmed)",
+    "market_slug": null,
+    "wallets": [],
+    "usernames": [],
+    "side": "Yes (model released by Dec 13)",
+    "entry_price": "not published",
+    "usd_bet": "not published",
+    "profit": "$16,872",
+    "why_suspicious": [
+      "OpenAI internal investigation found the employee used confidential information on prediction markets",
+      "Wired/Gizmodo: reported by blockchain records; employee not named"
+    ],
+    "sources": [
+      "https://gizmodo.com/the-great-insider-trading-reckoning-reportedly-hits-openai-2000727838",
+      "https://tech.slashdot.org/story/26/02/27/2342226"
+    ],
+    "address_confirmed": false,
+    "notes": "The dates and $16,872 come from search-result summaries (ucstrategies, vcpost); the Gizmodo page I read confirms the firing and quotes the finding but not the amount or dates. Wired original not fetched. Employee wallet unpublished."
+  },
+  {
+    "name": "Israel IDF reservist and civilian indicted - June 2025 Iran war timing bets",
+    "bet_date": "2025-06 (before Israel's June 2025 strikes on Iran; later bet on war end date)",
+    "news_date": "2026-02-12 (indictment announced)",
+    "market_question": "Israel/Iran strike-timing and 12-day-war end-date markets (exact titles not in sources)",
+    "market_slug": null,
+    "wallets": [],
+    "usernames": [],
+    "side": "not published",
+    "entry_price": "not published",
+    "usd_bet": "not published",
+    "profit": "Ynet: Air Force major knew attack date; ~$162,000 on Polymarket (headline figure, not read in full)",
+    "why_suspicious": [
+      "Indictment: reservist told civilian of attack timing while jets were en route; civilian placed the bet",
+      "Charged with passing classified info, bribery, aggravated espionage, obstruction"
+    ],
+    "sources": [
+      "https://www.npr.org/2026/02/12/nx-s1-5712801/polymarket-bets-traders-israel-military",
+      "https://www.timesofisrael.com/israeli-air-force-major-charged-with-using-classified-info-to-place-bets-on-polymarket/amp/",
+      "https://www.ynetnews.com/article/sjjp4m7o11l"
+    ],
+    "address_confirmed": false,
+    "notes": "Criminal case, so the strongest evidence class, but no wallet in any source I saw. Pages themselves not fetched; details from search summaries. Wallet would need to come from the Israeli indictment or on-chain sleuths."
+  },
+  {
+    "name": "Anti-Corruption Data Collective: 152 'Orca' wallets, US military markets",
+    "bet_date": "markets settled through 2026-05-05",
+    "news_date": "2026-08-20 (research); 2026-08-21 (Polymarket DOJ referrals, CNN)",
+    "market_question": "Multiple US military and defense markets",
+    "market_slug": null,
+    "wallets": [],
+    "usernames": [],
+    "side": "Yes on military actions",
+    "entry_price": "not published",
+    "usd_bet": "not published",
+    "profit": "~$8M across 152 wallets, 97.2% win rate",
+    "why_suspicious": [
+      "556 'Orca' wallets share a suspicious pattern; 152 of them earned ~$8M on military bets",
+      "Polymarket told CNN it referred dozens of such accounts to DOJ"
+    ],
+    "sources": [
+      "https://cryptobriefing.com/polymarket-wallets-military-insider-trading/",
+      "https://www.cnn.com/2026/08/21/politics/polymarket-doj-military-prediction-market",
+      "https://www.cryptotimes.io/2026/08/20/150-polymarket-wallets-suspected-of-trading-on-us-military-secrets/"
+    ],
+    "address_confirmed": false,
+    "notes": "Cohort-level, not a single case. Only search snippets read; no addresses. The dataset behind it would be the way to get per-wallet addresses."
+  }
+]

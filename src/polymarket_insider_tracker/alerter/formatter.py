@@ -61,7 +61,9 @@ def get_triggered_signals(assessment: RiskAssessment) -> list[str]:
     """Get list of triggered signal names."""
     # The wallet group is non-scoring until a T027 PASS receipt (FR-007c): it is never
     # listed as a triggered signal.
-    signals: list[str] = []
+    signals: list[str] = [
+        rule.split("_", 1)[1].replace("_", " ").title() for rule in assessment.insider_rules
+    ]
     if assessment.size_anomaly_signal:
         signals.append("Large Position")
         if assessment.size_anomaly_signal.is_niche_market:

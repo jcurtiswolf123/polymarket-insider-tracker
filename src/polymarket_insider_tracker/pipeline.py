@@ -19,6 +19,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, TypeVar
 
+import httpx
 from redis.asyncio import Redis
 
 from polymarket_insider_tracker import terminal_errors as terminal
@@ -37,6 +38,8 @@ from polymarket_insider_tracker.detector.evaluation_clock import (
     read_evaluation_instant,
     system_clock,
 )
+from polymarket_insider_tracker.detector.insider_rules import RuleThresholds, TradeFeatures
+from polymarket_insider_tracker.detector.insider_rules import evaluate as evaluate_rules
 from polymarket_insider_tracker.detector.models import RiskAssessment
 from polymarket_insider_tracker.detector.scorer import SignalBundle
 from polymarket_insider_tracker.ingestor.alert_path_health import AlertPathHealthMonitor
@@ -49,6 +52,11 @@ from polymarket_insider_tracker.pipeline_components import (
     ping_redis,
 )
 from polymarket_insider_tracker.profiler.funding import FundingTracer
+from polymarket_insider_tracker.profiler.wallet_history import (
+    WalletHistory,
+    features_for,
+    fetch_wallet_history,
+)
 from polymarket_insider_tracker.redaction import redact_exception_message, redact_text
 from polymarket_insider_tracker.storage.database import DatabaseManager
 from polymarket_insider_tracker.storage.repos import (
@@ -196,6 +204,8 @@ class Pipeline:
         self._terminal_writes: set[asyncio.Task[None]] = set()
         # Local fork: TRADE_WORKERS>0 scores trades on a worker pool so a slow market or
         # RPC lookup never stalls acquisition. 0 keeps upstream's inline processing.
+        self._history_cache: dict[str, tuple[float, WalletHistory]] = {}
+        self._history_client: httpx.AsyncClient | None = None
         self._trade_workers = max(0, int(os.environ.get("TRADE_WORKERS", "0") or 0))
         self._trade_queue: asyncio.Queue[TradeEvent] | None = None
         # Trades below this USDC notional skip scoring entirely (0 = score everything). An alert
@@ -542,6 +552,9 @@ class Pipeline:
             await terminal.cancel_task(task)
         self._worker_tasks = []
         self._trade_queue = None
+        if self._history_client is not None:
+            await self._history_client.aclose()
+            self._history_client = None
         self._poller_task = None
         self._metadata_task = None
         await self._drain_terminal_writes()
@@ -609,9 +622,10 @@ class Pipeline:
         if fresh_signal is not None:
             await self._persist_wallet_and_funding(fresh_signal)
 
-        if fresh_signal or bundle.size_anomaly_signal:
+        rules = await self._insider_rules(trade)
+        if fresh_signal or bundle.size_anomaly_signal or rules:
             self._stats.signals_generated += 1
-            await self._score_and_alert(bundle, installed)
+            await self._score_and_alert(bundle, installed, rules)
         elif evidence.failures:
             await self._persist_detector_failure_skip(bundle, evidence, installed)
 
@@ -823,9 +837,77 @@ class Pipeline:
             return
         await self._persist_assessment(assessment)
 
-    async def _score_and_alert(self, bundle: SignalBundle, installed: _InstalledComponents) -> None:
+    async def _insider_rules(self, trade: TradeEvent) -> list[str]:
+        """Run the named insider rules on one trade (local fork; INSIDER_RULES=1 enables)."""
+        if os.environ.get("INSIDER_RULES", "") != "1" or trade.side != "BUY":
+            return []
+        notional = trade.price * trade.size
+        thresholds = RuleThresholds()
+        if notional < thresholds.min_usdc or trade.price >= thresholds.max_price:
+            return []
+        try:
+            history = await self._wallet_history(trade.wallet_address)
+        except Exception as e:
+            self._record_processing_error(
+                f"wallet history failed for {trade.wallet_address[:10]}: "
+                f"{redact_exception_message(e)}"
+            )
+            return []
+        features = features_for(
+            history,
+            condition_id=trade.market_id.lower(),
+            trade_ts=int(trade.timestamp.timestamp()),
+            notional_usdc=notional,
+            price=trade.price,
+            side=trade.side,
+            event_slug=trade.event_slug,
+        )
+        fired = evaluate_rules(features, thresholds)
+        if fired:
+            logger.info(
+                "insider rule fired: %s wallet=%s market=%s usdc=%s price=%s age_h=%.1f mkts=%d",
+                ",".join(fired),
+                trade.wallet_address,
+                trade.market_id,
+                round(notional),
+                trade.price,
+                features.wallet_age_hours or 0.0,
+                features.prior_markets,
+            )
+            _append_rule_hit(trade, fired, features)
+        return fired
+
+    async def _wallet_history(self, address: str) -> WalletHistory:
+        """Wallet history with a 2-minute in-process cache (a wallet's fills arrive in bursts)."""
+        now = time.monotonic()
+        cache = self._history_cache
+        hit = cache.get(address)
+        if hit and now - hit[0] < 120:
+            return hit[1]
+        if self._history_client is None:
+            self._history_client = httpx.AsyncClient(timeout=15.0)
+        history = await fetch_wallet_history(address, client=self._history_client, max_pages=2)
+        if len(cache) > 5000:
+            cache.clear()
+        cache[address] = (now, history)
+        return history
+
+    async def _score_and_alert(
+        self,
+        bundle: SignalBundle,
+        installed: _InstalledComponents,
+        rules: list[str] | None = None,
+    ) -> None:
         """Score signals, persist the assessment, and send alert if above threshold."""
         assessment = await installed.current.risk_scorer.assess(bundle)
+        if rules:
+            threshold = float(self._settings.detector.alert_threshold)
+            assessment = dataclasses.replace(
+                assessment,
+                should_alert=True,
+                weighted_score=max(assessment.weighted_score, threshold),
+                insider_rules=tuple(rules),
+            )
         if not assessment.should_alert:
             await self._handle_below_threshold(bundle, assessment)
             return
@@ -909,3 +991,32 @@ class Pipeline:
     async def __aexit__(self, *args: object) -> None:
         """Async context manager exit."""
         await self.stop()
+
+
+RULE_HITS_PATH = os.path.expanduser(
+    os.environ.get("RULE_HITS_PATH", "~/.polywatch/rule_hits.jsonl")
+)
+
+
+def _append_rule_hit(trade: TradeEvent, fired: list[str], f: TradeFeatures) -> None:
+    """One JSON line per fired trade, for `polywatch rules` and later tuning."""
+    row = {
+        "ts": trade.timestamp.isoformat(),
+        "rules": fired,
+        "wallet": trade.wallet_address,
+        "market": trade.market_id,
+        "slug": trade.market_slug or trade.event_slug,
+        "title": trade.event_title,
+        "outcome": trade.outcome,
+        "price": str(trade.price),
+        "usdc": str(round(trade.price * trade.size, 2)),
+        "age_h": round(f.wallet_age_hours or 0.0, 1),
+        "prior_markets": f.prior_markets,
+        "market_share": str(round(f.market_share, 2)) if f.market_share is not None else None,
+    }
+    try:
+        os.makedirs(os.path.dirname(RULE_HITS_PATH), exist_ok=True)
+        with open(RULE_HITS_PATH, "a") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except OSError as e:
+        logger.warning("rule hit log write failed: %s", e)

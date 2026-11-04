@@ -582,7 +582,9 @@ async def _first_polymarket_activity(address: str) -> Transaction | None:
             resp.raise_for_status()
             rows = resp.json().get("data") or []
     except (httpx.HTTPError, ValueError) as e:
-        logger.warning("first-activity lookup failed for %s: %s", address, redact_exception_message(e))
+        logger.warning(
+            "first-activity lookup failed for %s: %s", address, redact_exception_message(e)
+        )
         return None
     if not rows or not rows[0].get("timestamp"):
         return None

@@ -280,6 +280,8 @@ class RiskAssessment:
     delivery_channels: str | None = None
     dry_run: bool = False
     volume_available: bool | None = None
+    # Local fork: names of insider_rules that fired (empty when none).
+    insider_rules: tuple[str, ...] = ()
     market_daily_volume: Decimal | None = None
     book_depth_available: bool | None = None
     wallet_tx_count: int | None = None
