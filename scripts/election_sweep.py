@@ -169,6 +169,7 @@ async def main() -> None:
             "q": m["q"],
             "outcome": m["outcomes"][oi] if oi < len(m["outcomes"]) else oi,
             "usdc_window": round(p["usdc"]),
+            "est_pnl": round(p["shares"] * now_px - p["usdc"]) if now_px is not None else None,
             "avg_px": round(avg, 3),
             "now_px": now_px,
             "first": time.strftime("%m-%d %H:%M", time.gmtime(p["first_ts"])),
@@ -211,7 +212,27 @@ async def main() -> None:
                     "wallets": len(recs),
                     "usdc": total,
                     "now_px": recs[0]["now_px"],
-                    "members": [x["wallet"] for x in recs],
+                    "est_pnl": sum(x["est_pnl"] or 0 for x in recs),
+                    "avg_px": round(
+                        sum(x["usdc_window"] for x in recs)
+                        / max(1, sum(x["usdc_window"] / max(x["avg_px"], 1e-6) for x in recs)),
+                        3,
+                    ),
+                    "members": [
+                        {
+                            k: x.get(k)
+                            for k in (
+                                "wallet",
+                                "usdc_window",
+                                "avg_px",
+                                "est_pnl",
+                                "age_d",
+                                "first",
+                                "last",
+                            )
+                        }
+                        for x in recs
+                    ],
                 }
             )
     hits.sort(key=lambda x: (-len(x["rules"]), -len(x.get("signals", [])), -x["usdc_window"]))
