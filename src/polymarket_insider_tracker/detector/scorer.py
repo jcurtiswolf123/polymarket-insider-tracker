@@ -105,6 +105,15 @@ def fresh_wallet_scoring_enabled() -> bool:
     return os.environ.get("SCORE_FRESH_WALLET", "").strip().lower() in {"1", "true", "yes"}
 
 
+def fresh_big_bet_usdc() -> Decimal:
+    """Local fork: USDC notional at which a fresh-wallet trade alerts alone (0 = off)."""
+    raw = os.environ.get("FRESH_BIG_BET_USDC", "").strip()
+    try:
+        return Decimal(raw) if raw else Decimal(0)
+    except ArithmeticError:
+        return Decimal(0)
+
+
 def combined_group_score(
     weights: Mapping[str, float],
     fresh_confidence: float,
@@ -401,12 +410,19 @@ class RiskScorer:
             if signal is None:
                 return 0.0, 0
             return size_group_score(self._weights, signal.confidence, niche=signal.is_niche_market)
-        return combined_group_score(
+        score, groups = combined_group_score(
             self._weights,
             fresh.confidence,
             signal.confidence if signal else None,
             niche=bool(signal and signal.is_niche_market),
         )
+        # A fresh wallet placing a very large bet alerts on its own: in a deep market (Senate
+        # control, a war) even $50K is not "outsized" against volume, so the size group never fires.
+        big_bet = fresh_big_bet_usdc()
+        trade = bundle.trade_event
+        if big_bet and trade.price * trade.size >= big_bet:
+            score = max(score, float(quantize_score_value(self._alert_threshold)))
+        return score, groups
 
     async def assess_batch(self, bundles: list[SignalBundle]) -> list[RiskAssessment]:
         """Assess multiple trade bundles.
