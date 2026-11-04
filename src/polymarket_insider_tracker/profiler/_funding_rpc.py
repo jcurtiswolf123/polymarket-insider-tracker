@@ -11,6 +11,7 @@ and holds no per-trace state of its own.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -43,7 +44,7 @@ TRANSFER_EVENT_TOPIC = HexStr("0x" + TRANSFER_EVENT_SIGNATURE.hex().removeprefix
 # llamarpc) cap the range at 10_000 blocks per call; pick a window slightly
 # under the cap so off-by-one differences between providers don't trip us up.
 DEFAULT_CHUNK_SIZE_BLOCKS = 9_000
-HEAD_SAFETY_BLOCKS = 64
+HEAD_LAG_RETRY_SECONDS = 4.0
 # Polygon block time is ~2.0s. publicnode (the most common free RPC) prunes
 # log history aggressively — empirically only ~100k blocks (~55 hours) are
 # served before requests start returning "History has been pruned". We default
@@ -193,6 +194,7 @@ class TransferLogScanner:
         chunk_start: int,
         chunk_end: int,
         to_address: str,
+        retried: bool = False,
     ) -> tuple[Sequence[Mapping[str, object]] | None, bool]:
         """Fetch logs for a chunk, returning (logs, should_stop)."""
         try:
@@ -204,11 +206,14 @@ class TransferLogScanner:
             )
             return logs, False
         except Exception as e:
-            if "invalid block range" in str(e) and chunk_end - chunk_start > HEAD_SAFETY_BLOCKS:
+            if "invalid block range" in str(e) and not retried:
                 # Load-balanced public RPC nodes lag each other: a toBlock at one node's
-                # head is out of range on the next. Retry once a few blocks back.
+                # head is out of range on the next. The newest blocks matter most (a wallet
+                # funded minutes before it trades), so wait for the lagging node and retry
+                # the full range once rather than dropping the head.
+                await asyncio.sleep(HEAD_LAG_RETRY_SECONDS)
                 return await self._fetch_chunk_with_handling(
-                    contract_address, topics, chunk_start, chunk_end - HEAD_SAFETY_BLOCKS, to_address
+                    contract_address, topics, chunk_start, chunk_end, to_address, retried=True
                 )
             if is_pruned_history_error(e):
                 logger.info(

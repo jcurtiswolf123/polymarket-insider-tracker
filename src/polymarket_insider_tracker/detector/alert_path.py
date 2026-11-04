@@ -18,6 +18,8 @@ from typing import Literal
 from polymarket_insider_tracker.detector.scorer import (
     DEFAULT_WEIGHTS,
     RiskScorer,
+    combined_group_score,
+    fresh_wallet_scoring_enabled,
     quantize_score_value,
     size_group_score,
 )
@@ -90,10 +92,15 @@ def _best_case_ceiling(weights: Mapping[str, float]) -> Decimal:
     While the wallet group is unqualified it contributes nothing, so the producible classes are
     the size group with and without the niche modifier at their saturated confidences.
     """
-    scores = (
+    scores = [
         size_group_score(weights, confidence, niche=niche)[0]
         for confidence, niche in _PRODUCIBLE_SIZE_CLASSES
-    )
+    ]
+    if fresh_wallet_scoring_enabled():
+        scores += [
+            combined_group_score(weights, 1.0, confidence, niche=niche)[0]
+            for confidence, niche in _PRODUCIBLE_SIZE_CLASSES
+        ]
     return quantize_score_value(max(scores))
 
 

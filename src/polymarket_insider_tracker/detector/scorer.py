@@ -5,6 +5,7 @@ multiple detectors into a unified risk assessment with weighted scoring.
 """
 
 import logging
+import os
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -93,6 +94,36 @@ def size_group_score(
     capped = min(score, Decimal(1)).quantize(SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
     return float(capped), 1
 
+
+
+def fresh_wallet_scoring_enabled() -> bool:
+    """Local fork switch: let the fresh-wallet group score before an upstream T027 PASS.
+
+    Upstream keeps the wallet group as evidence only, which caps every score at 0.45 and makes
+    the 0.80 alert threshold unreachable. ``SCORE_FRESH_WALLET=1`` restores it as a scoring group.
+    """
+    return os.environ.get("SCORE_FRESH_WALLET", "").strip().lower() in {"1", "true", "yes"}
+
+
+def combined_group_score(
+    weights: Mapping[str, float],
+    fresh_confidence: float,
+    size_confidence: float | None,
+    *,
+    niche: bool,
+) -> tuple[float, int]:
+    """Fresh-wallet group plus the optional size group, with the two-group bonus and cap."""
+    score = quantize_score_value(fresh_confidence) * Decimal(str(weights.get("fresh_wallet", 0.0)))
+    groups = 1
+    if size_confidence is not None:
+        q = quantize_score_value(size_confidence)
+        score += q * Decimal(str(weights.get("size_anomaly", 0.0)))
+        if niche:
+            score += q * Decimal(str(weights.get("niche_market", 0.0)))
+        groups = 2
+    score = apply_multi_signal_bonus(score, groups)
+    capped = min(score, Decimal(1)).quantize(SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
+    return float(capped), groups
 
 def _warn_deprecated_weights(surface: str) -> None:
     warnings.warn(
@@ -365,9 +396,17 @@ class RiskScorer:
             Tuple of (weighted_score, signals_triggered_count).
         """
         signal = bundle.size_anomaly_signal
-        if signal is None:
-            return 0.0, 0
-        return size_group_score(self._weights, signal.confidence, niche=signal.is_niche_market)
+        fresh = bundle.fresh_wallet_signal if fresh_wallet_scoring_enabled() else None
+        if fresh is None:
+            if signal is None:
+                return 0.0, 0
+            return size_group_score(self._weights, signal.confidence, niche=signal.is_niche_market)
+        return combined_group_score(
+            self._weights,
+            fresh.confidence,
+            signal.confidence if signal else None,
+            niche=bool(signal and signal.is_niche_market),
+        )
 
     async def assess_batch(self, bundles: list[SignalBundle]) -> list[RiskAssessment]:
         """Assess multiple trade bundles.

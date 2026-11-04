@@ -15,10 +15,9 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-
-import httpx
 from decimal import Decimal
 
+import httpx
 from eth_typing import ABI
 from redis.asyncio import Redis
 from web3 import AsyncWeb3
