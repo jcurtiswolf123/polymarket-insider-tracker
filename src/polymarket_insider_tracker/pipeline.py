@@ -15,6 +15,7 @@ import time
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, TypeVar
 
@@ -197,6 +198,10 @@ class Pipeline:
         # RPC lookup never stalls acquisition. 0 keeps upstream's inline processing.
         self._trade_workers = max(0, int(os.environ.get("TRADE_WORKERS", "0") or 0))
         self._trade_queue: asyncio.Queue[TradeEvent] | None = None
+        # Trades below this USDC notional skip scoring entirely (0 = score everything). An alert
+        # needs the fresh-wallet signal, whose own floor is $1,000, so a floor up to that loses
+        # no alert; it keeps the worker pool ahead of Polymarket's full trade rate.
+        self._min_score_notional = Decimal(os.environ.get("MIN_SCORE_NOTIONAL", "0") or "0")
         self._worker_tasks: list[asyncio.Task[None]] = []
 
     @property
@@ -445,6 +450,9 @@ class Pipeline:
 
     async def _on_polled_trade(self, trade: TradeEvent) -> None:
         """Poller callback: hand off to the worker pool when enabled, else score inline."""
+        if self._min_score_notional and trade.price * trade.size < self._min_score_notional:
+            self._stats.trades_processed += 1
+            return
         if self._trade_queue is None:
             await self.process_trade(trade)
             return
