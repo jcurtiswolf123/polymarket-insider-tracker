@@ -181,7 +181,7 @@ class MarketMetadataSync:
         1. Perform an initial sync of all markets
         2. Start a background task to periodically refresh
         """
-        if self._state != SyncState.STOPPED:
+        if self._state not in (SyncState.STOPPED, SyncState.ERROR):
             logger.warning(f"Cannot start sync: already in state {self._state}")
             return
 

@@ -533,14 +533,24 @@ class Pipeline:
 
     async def _run_metadata_sync(self, installed: _InstalledComponents) -> None:
         """Run the initial metadata crawl without delaying acquisition."""
-        try:
-            await installed.current.metadata_sync.start()
-        except asyncio.CancelledError:
-            logger.debug("Metadata sync task cancelled")
-        except Exception as e:
-            logger.error("Metadata sync error: %s", redact_exception_message(e))
-            self._stats.last_error = redact_exception_message(e)
-            self._stats.errors += 1
+        delay = 30.0
+        while True:
+            try:
+                await installed.current.metadata_sync.start()
+                return
+            except asyncio.CancelledError:
+                logger.debug("Metadata sync task cancelled")
+                return
+            except Exception as e:
+                # A failed first crawl used to end metadata sync for the process lifetime,
+                # leaving outcome/niche blank until restart. Retry with backoff instead.
+                logger.error(
+                    "Metadata sync error (retry in %.0fs): %s", delay, redact_exception_message(e)
+                )
+                self._stats.last_error = redact_exception_message(e)
+                self._stats.errors += 1
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 600.0)
 
     def on_ingestion_state(self, state: IngestionState) -> None:
         """Record terminal ingestion failures on the pipeline statistics."""

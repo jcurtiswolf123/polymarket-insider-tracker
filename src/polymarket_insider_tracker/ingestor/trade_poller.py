@@ -805,9 +805,16 @@ class TradePoller:
         try:
             metadata = await self._metadata.get_cached_market(observation.event.market_id)
         except Exception as exc:
-            logger.warning(
-                "metadata lookup failed during outcome repair: %s", redact_exception_message(exc)
-            )
+            # Throttled: a Redis outage made this one line 187k times in 9 hours.
+            self._repair_failures = getattr(self, "_repair_failures", 0) + 1
+            now = time.monotonic()
+            if now - getattr(self, "_repair_logged_at", -1e9) >= 60:
+                logger.warning(
+                    "metadata lookup failed during outcome repair (%d in last window): %s",
+                    self._repair_failures,
+                    redact_exception_message(exc),
+                )
+                self._repair_logged_at, self._repair_failures = now, 0
             metadata = None
         return repair_outcome(observation, metadata)
 
