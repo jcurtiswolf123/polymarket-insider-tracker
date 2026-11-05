@@ -43,9 +43,11 @@ from polymarket_insider_tracker.detector.insider_rules import (
     RuleThresholds,
     TradeFeatures,
     evaluate_tiered,
+    is_active_trader,
     is_watch_market,
     widened,
 )
+from polymarket_insider_tracker.detector.learned import LearnedModel, append_features
 from polymarket_insider_tracker.detector.models import RiskAssessment
 from polymarket_insider_tracker.detector.scorer import SignalBundle
 from polymarket_insider_tracker.ingestor.alert_path_health import AlertPathHealthMonitor
@@ -212,6 +214,9 @@ class Pipeline:
         # RPC lookup never stalls acquisition. 0 keeps upstream's inline processing.
         self._history_cache: dict[str, tuple[float, WalletHistory]] = {}
         self._fresh_cluster = FreshCluster()
+        # Local fork: market start/end times from Gamma (in-play check), and the learned scorer.
+        self._market_meta: dict[str, tuple[float, dict[str, object]]] = {}
+        self._learned = LearnedModel()
         self._history_client: httpx.AsyncClient | None = None
         self._trade_workers = max(0, int(os.environ.get("TRADE_WORKERS", "0") or 0))
         self._trade_queue: asyncio.Queue[TradeEvent] | None = None
@@ -639,10 +644,10 @@ class Pipeline:
         if fresh_signal is not None:
             await self._persist_wallet_and_funding(fresh_signal)
 
-        rules = await self._insider_rules(trade)
+        rules, suppress = await self._rules_and_gate(trade, bundle)
         if fresh_signal or bundle.size_anomaly_signal or rules:
             self._stats.signals_generated += 1
-            await self._score_and_alert(bundle, installed, rules)
+            await self._score_and_alert(bundle, installed, rules, suppress=suppress)
         elif evidence.failures:
             await self._persist_detector_failure_skip(bundle, evidence, installed)
 
@@ -855,15 +860,67 @@ class Pipeline:
         await self._persist_assessment(assessment)
 
     async def _insider_rules(self, trade: TradeEvent) -> list[str]:
-        """Run the named insider rules on one trade (local fork; INSIDER_RULES=1 enables)."""
+        """Named insider rules for one trade (no gate); kept for callers and tests."""
+        rules, _ = await self._rules_and_gate(trade, None)
+        return rules
+
+    async def _market_info(self, condition_id: str) -> dict[str, object]:
+        """Gamma start/end/volume for one market, cached 30 minutes. Empty dict on failure."""
+        now = time.monotonic()
+        hit = self._market_meta.get(condition_id)
+        if hit and now - hit[0] < 1800:
+            return hit[1]
+        info: dict[str, object] = {}
+        try:
+            if self._history_client is None:
+                self._history_client = httpx.AsyncClient(timeout=15.0)
+            resp = await self._history_client.get(
+                "https://gamma-api.polymarket.com/markets",
+                params={"condition_ids": condition_id, "closed": "true"},
+            )
+            rows = resp.json() if resp.status_code == 200 else []
+            if not rows:
+                resp = await self._history_client.get(
+                    "https://gamma-api.polymarket.com/markets",
+                    params={"condition_ids": condition_id},
+                )
+                rows = resp.json() if resp.status_code == 200 else []
+            if rows:
+                m = rows[0]
+                info = {
+                    "game_start": _parse_ts(m.get("gameStartTime")),
+                    "end": _parse_ts(m.get("endDate")),
+                    "volume": float(m.get("volume") or 0),
+                    "question": m.get("question") or "",
+                }
+        except Exception as e:
+            logger.debug("gamma market lookup failed for %s: %s", condition_id[:10], e)
+        if len(self._market_meta) > 20000:
+            self._market_meta.clear()
+        self._market_meta[condition_id] = (now, info)
+        return info
+
+    async def _rules_and_gate(
+        self, trade: TradeEvent, bundle: SignalBundle | None
+    ) -> tuple[list[str], bool]:
+        """Rules, in-play check, and learned-model gate for one trade (local fork).
+
+        Returns (fired rules, suppress). ``suppress`` means: score and persist the trade but
+        never alert on it, because the game was already live or the promoted model says the
+        wallet has no edge. Every evaluated trade is logged with its features for training.
+        """
         if os.environ.get("INSIDER_RULES", "") != "1" or trade.side != "BUY":
-            return []
+            return [], False
         notional = trade.price * trade.size
         watch = is_watch_market(trade.event_title, trade.market_slug, trade.event_slug)
         base = RuleThresholds()
         floor = widened(base) if watch else base
         if notional < floor.min_usdc or trade.price >= floor.max_price:
-            return []
+            return [], False
+        trade_ts = int(trade.timestamp.timestamp())
+        info = await self._market_info(trade.market_id.lower())
+        start = info.get("game_start")
+        in_play = isinstance(start, float) and trade_ts >= start
         try:
             history = await self._wallet_history(trade.wallet_address)
         except Exception as e:
@@ -871,7 +928,7 @@ class Pipeline:
                 f"wallet history failed for {trade.wallet_address[:10]}: "
                 f"{redact_exception_message(e)}"
             )
-            return []
+            return [], in_play
         features = features_for(
             history,
             condition_id=trade.market_id.lower(),
@@ -882,16 +939,39 @@ class Pipeline:
             event_slug=trade.event_slug,
         )
         fired = evaluate_tiered(features, watch, base)
+        active = is_active_trader(features, base)
         if self._fresh_cluster.observe(
             trade.market_id.lower(),
             trade.outcome,
             trade.wallet_address.lower(),
-            int(trade.timestamp.timestamp()),
+            trade_ts,
             notional,
-            features.wallet_age_hours,
+            None if active else features.wallet_age_hours,
         ):
             fired.append("C1_fresh_cluster")
-        if fired:
+        row = _feature_row(trade, features, fired, info, in_play, watch, active, bundle)
+        verdict = self._learned.score(row)
+        suppress = in_play
+        if verdict is not None:
+            row["ml_p_win"] = round(verdict.p_win, 4)
+            row["ml_edge"] = round(verdict.edge, 4)
+            row["ml_version"] = verdict.version
+            if verdict.promoted and not in_play:
+                gate = float(os.environ.get("ML_GATE_MIN_EDGE", "0.0"))
+                lift = float(os.environ.get("ML_ALERT_EDGE", "0.15"))
+                if fired and verdict.edge < gate:
+                    row["ml_suppressed"] = True
+                    suppress = True
+                elif (
+                    not fired
+                    and verdict.edge >= lift
+                    and notional >= Decimal(os.environ.get("ML_ALERT_USDC", "2000"))
+                ):
+                    fired = ["M1_model_edge"]
+        append_features(row)
+        if in_play:
+            return [], True
+        if fired and not suppress:
             logger.info(
                 "insider rule fired: %s wallet=%s market=%s usdc=%s price=%s age_h=%.1f mkts=%d",
                 ",".join(fired),
@@ -902,8 +982,8 @@ class Pipeline:
                 features.wallet_age_hours or 0.0,
                 features.prior_markets,
             )
-            _append_rule_hit(trade, fired, features)
-        return fired
+            _append_rule_hit(trade, fired, features, row)
+        return fired, suppress
 
     async def _wallet_history(self, address: str) -> WalletHistory:
         """Wallet history with a 2-minute in-process cache (a wallet's fills arrive in bursts)."""
@@ -925,10 +1005,15 @@ class Pipeline:
         bundle: SignalBundle,
         installed: _InstalledComponents,
         rules: list[str] | None = None,
+        *,
+        suppress: bool = False,
     ) -> None:
         """Score signals, persist the assessment, and send alert if above threshold."""
         assessment = await installed.current.risk_scorer.assess(bundle)
-        if rules:
+        if suppress:
+            # Local fork: live game or no learned edge. Keep the row, never alert.
+            assessment = dataclasses.replace(assessment, should_alert=False)
+        elif rules:
             threshold = float(self._settings.detector.alert_threshold)
             assessment = dataclasses.replace(
                 assessment,
@@ -1026,9 +1111,86 @@ RULE_HITS_PATH = os.path.expanduser(
 )
 
 
-def _append_rule_hit(trade: TradeEvent, fired: list[str], f: TradeFeatures) -> None:
-    """One JSON line per fired trade, for `polywatch rules` and later tuning."""
+def _parse_ts(raw: object) -> float | None:
+    """Gamma timestamps come as ISO with Z, or '2026-11-05 01:30:00+00'."""
+    if not raw or not isinstance(raw, str):
+        return None
+    text = raw.strip().replace(" ", "T", 1).replace("Z", "+00:00")
+    if text.endswith("+00"):
+        text += ":00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.timestamp()
+
+
+def _feature_row(
+    trade: TradeEvent,
+    f: TradeFeatures,
+    fired: list[str],
+    info: dict[str, object],
+    in_play: bool,
+    watch: bool,
+    active: bool,
+    bundle: SignalBundle | None,
+) -> dict[str, object]:
+    """Everything the learner trains on, for one evaluated BUY."""
+    ts = trade.timestamp.timestamp()
+    start, end = info.get("game_start"), info.get("end")
+    size = bundle.size_anomaly_signal if bundle else None
+    fresh = bundle.fresh_wallet_signal if bundle else None
+    return {
+        "ts": int(ts),
+        "trade_id": trade.trade_id,
+        "wallet": trade.wallet_address.lower(),
+        "market": trade.market_id.lower(),
+        "outcome": trade.outcome,
+        "outcome_index": trade.outcome_index,
+        "title": info.get("question") or trade.event_title,
+        "slug": trade.market_slug or trade.event_slug,
+        "price": float(trade.price),
+        "usdc": round(float(trade.price * trade.size), 2),
+        "age_h": round(f.wallet_age_hours or 0.0, 2),
+        "prior_markets": f.prior_markets,
+        "prior_trades": f.prior_trades,
+        "market_share": float(f.market_share) if f.market_share is not None else None,
+        "market_cum": float(f.market_cumulative_usdc or 0),
+        "longshot_markets": f.longshot_markets,
+        "longshot_wins": f.longshot_wins,
+        "event_markets": f.event_markets,
+        "event_share": float(f.event_share) if f.event_share is not None else None,
+        "in_play": int(in_play),
+        "hours_to_start": round((start - ts) / 3600, 2) if isinstance(start, float) else None,
+        "hours_to_end": round((end - ts) / 3600, 2) if isinstance(end, float) else None,
+        "market_volume": info.get("volume"),
+        "niche": int(bool(size and size.is_niche_market)),
+        "size_conf": float(size.confidence) if size else 0.0,
+        "fresh_conf": float(fresh.confidence) if fresh else 0.0,
+        "watch": int(watch),
+        "active": int(active),
+        "rules": list(fired),
+    }
+
+
+def _append_rule_hit(
+    trade: TradeEvent,
+    fired: list[str],
+    f: TradeFeatures,
+    extra: dict[str, object] | None = None,
+) -> None:
+    """One JSON line per fired trade, for `polywatch rules`, SMS alerts and later tuning."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):  # tests never write the live alert log
+        return
+    extra = extra or {}
     row = {
+        "ml_edge": extra.get("ml_edge"),
+        "ml_p_win": extra.get("ml_p_win"),
+        "hours_to_start": extra.get("hours_to_start"),
+        "prior_trades": f.prior_trades,
+        "trade_id": trade.trade_id,
         "ts": trade.timestamp.isoformat(),
         "seen": datetime.now(UTC).isoformat(timespec="seconds"),
         "lag_s": round(datetime.now(UTC).timestamp() - trade.timestamp.timestamp(), 1),

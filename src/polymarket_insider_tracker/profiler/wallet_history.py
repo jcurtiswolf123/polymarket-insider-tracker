@@ -190,7 +190,9 @@ def features_for(
             paid[cid] = paid.get(cid, Decimal(0)) + usdc
     wins = sum(1 for cid, c in cost.items() if paid.get(cid, Decimal(0)) > c)
     age = (trade_ts - history.first_ts) / 3600 if history.first_ts else 0.0
+    prior_trades = 999 if history.truncated else len({h.transaction_hash or id(h) for h in prior})
     return TradeFeatures(
+        prior_trades=prior_trades,
         notional_usdc=notional_usdc,
         price=price,
         side=side,

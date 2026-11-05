@@ -78,6 +78,12 @@ class RuleThresholds:
     max_price: Decimal = field(default_factory=lambda: _env_dec("RULE_MAX_PRICE", "0.93"))
     # Floor: rules never look at a trade below this (keeps noise and load down)
     min_usdc: Decimal = field(default_factory=lambda: _env_dec("RULE_MIN_USDC", "1000"))
+    # Active trader: a wallet firing many trades per hour is a bot or live bettor, not a fresh
+    # insider, however young it is. The wallet-age and thin-history rules skip it.
+    active_min_trades: int = field(
+        default_factory=lambda: int(_env_dec("RULE_ACTIVE_MIN_TRADES", "20"))
+    )
+    active_rate: Decimal = field(default_factory=lambda: _env_dec("RULE_ACTIVE_RATE", "8"))
 
 
 @dataclass(frozen=True)
@@ -102,6 +108,28 @@ class TradeFeatures:
     event_cumulative_usdc: Decimal | None = None
     event_markets: int = 0
     event_share: Decimal | None = None
+    # Distinct transactions the wallet made before this trade (999 when history was truncated).
+    prior_trades: int = 0
+
+
+# Rules that read "new or thin wallet"; an active trader never fires them.
+FRESHNESS_RULES = frozenset(
+    {
+        "R1_fresh_big_bet",
+        "R2_young_thin_wallet",
+        "R4_single_purpose_wallet",
+        "R5_whale_thin_history",
+    }
+)
+
+
+def is_active_trader(f: TradeFeatures, t: RuleThresholds | None = None) -> bool:
+    """Many trades, fast: a bot, market maker or live bettor."""
+    t = t or RuleThresholds()
+    if f.prior_trades < t.active_min_trades:
+        return False
+    hours = max(f.wallet_age_hours or 0.0, 1.0)
+    return Decimal(f.prior_trades) / Decimal(str(hours)) >= t.active_rate
 
 
 def evaluate(f: TradeFeatures, t: RuleThresholds | None = None) -> list[str]:
@@ -157,6 +185,8 @@ def evaluate(f: TradeFeatures, t: RuleThresholds | None = None) -> list[str]:
         and f.event_share >= t.sweep_share
     ):
         fired.append("R8_event_sweep")
+    if fired and is_active_trader(f, t):
+        fired = [r for r in fired if r not in FRESHNESS_RULES]
     return fired
 
 
