@@ -18,7 +18,7 @@ from polymarket_insider_tracker.profiler.wallet_history import (
     features_for,
 )
 
-T = RuleThresholds(active_min_trades=20, active_rate=Decimal(8))
+T = RuleThresholds(active_min_trades=20, active_rate=Decimal(8), active_min_markets=3)
 
 
 def fresh(**kw: object) -> TradeFeatures:
@@ -40,7 +40,7 @@ def test_fresh_wallet_with_few_trades_still_fires() -> None:
 
 
 def test_rapid_fire_wallet_drops_freshness_rules() -> None:
-    f = fresh(prior_trades=60)  # 60 tx in 3 hours = 20/h
+    f = fresh(prior_trades=60, prior_markets=4)  # 60 tx in 3 hours = 20/h, 4 markets
     assert is_active_trader(f, T)
     fired = evaluate(f, T)
     assert not {
@@ -52,7 +52,7 @@ def test_rapid_fire_wallet_drops_freshness_rules() -> None:
 
 
 def test_longshot_rules_survive_active_trader() -> None:
-    f = fresh(prior_trades=60, price=Decimal("0.1"), notional_usdc=Decimal(30000))
+    f = fresh(prior_trades=60, prior_markets=4, price=Decimal("0.1"), notional_usdc=Decimal(30000))
     assert "R6_whale_longshot" in evaluate(f, T)
 
 
@@ -62,8 +62,11 @@ def test_slow_old_wallet_is_not_active() -> None:
 
 def test_prior_trades_counts_distinct_transactions() -> None:
     fills = [
-        HistoryTrade(100 + i // 3, "0xa", "BUY", Decimal("0.5"), Decimal(10), f"tx{i // 3}")
+        HistoryTrade(100 + i // 3, "0xa", "BUY", Decimal("0.5"), Decimal(20), f"tx{i // 3}")
         for i in range(30)
+    ] + [
+        HistoryTrade(200 + i, "0xa", "BUY", Decimal("0.5"), Decimal(1), f"dust{i}")
+        for i in range(50)
     ]
     hist = WalletHistory("0xw", 100, tuple(fills), False)
     f = features_for(
@@ -75,6 +78,18 @@ def test_prior_trades_counts_distinct_transactions() -> None:
         side="BUY",
     )
     assert f.prior_trades == 10
+
+
+def test_padded_single_market_wallet_keeps_freshness_rules() -> None:
+    # 500 tx in 3h but all in one market: the shape of an insider padding its count
+    fired = evaluate(fresh(prior_trades=500, prior_markets=1), T)
+    assert "R1_fresh_big_bet" in fired
+
+
+def test_dropped_rules_are_reported() -> None:
+    from polymarket_insider_tracker.detector.insider_rules import dropped_for_activity
+
+    assert "R1_fresh_big_bet" in dropped_for_activity(fresh(prior_trades=60, prior_markets=4), T)
 
 
 def test_parse_gamma_timestamps() -> None:

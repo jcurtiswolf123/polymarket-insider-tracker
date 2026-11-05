@@ -42,6 +42,7 @@ from polymarket_insider_tracker.detector.insider_rules import (
     FreshCluster,
     RuleThresholds,
     TradeFeatures,
+    dropped_for_activity,
     evaluate_tiered,
     is_active_trader,
     is_watch_market,
@@ -946,10 +947,12 @@ class Pipeline:
             trade.wallet_address.lower(),
             trade_ts,
             notional,
-            None if active else features.wallet_age_hours,
+            features.wallet_age_hours,  # C1 keeps active wallets; in-play handles live games
         ):
             fired.append("C1_fresh_cluster")
         row = _feature_row(trade, features, fired, info, in_play, watch, active, bundle)
+        if active:  # never drop a rule silently: the log says what activity switched off
+            row["active_dropped"] = dropped_for_activity(features, base)
         verdict = self._learned.score(row)
         suppress = in_play
         if verdict is not None:
@@ -1190,6 +1193,7 @@ def _append_rule_hit(
         "ml_p_win": extra.get("ml_p_win"),
         "hours_to_start": extra.get("hours_to_start"),
         "prior_trades": f.prior_trades,
+        "active_dropped": extra.get("active_dropped"),
         "trade_id": trade.trade_id,
         "ts": trade.timestamp.isoformat(),
         "seen": datetime.now(UTC).isoformat(timespec="seconds"),

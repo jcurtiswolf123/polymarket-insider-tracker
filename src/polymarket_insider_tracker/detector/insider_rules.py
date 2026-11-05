@@ -84,6 +84,10 @@ class RuleThresholds:
         default_factory=lambda: int(_env_dec("RULE_ACTIVE_MIN_TRADES", "20"))
     )
     active_rate: Decimal = field(default_factory=lambda: _env_dec("RULE_ACTIVE_RATE", "8"))
+    # Real bots spread over markets; a padded insider wallet sits in one or two.
+    active_min_markets: int = field(
+        default_factory=lambda: int(_env_dec("RULE_ACTIVE_MIN_MARKETS", "3"))
+    )
 
 
 @dataclass(frozen=True)
@@ -108,7 +112,7 @@ class TradeFeatures:
     event_cumulative_usdc: Decimal | None = None
     event_markets: int = 0
     event_share: Decimal | None = None
-    # Distinct transactions the wallet made before this trade (999 when history was truncated).
+    # Distinct non-dust transactions (>= RULE_ACTIVE_MIN_TX_USDC) before this trade.
     prior_trades: int = 0
 
 
@@ -126,7 +130,7 @@ FRESHNESS_RULES = frozenset(
 def is_active_trader(f: TradeFeatures, t: RuleThresholds | None = None) -> bool:
     """Many trades, fast: a bot, market maker or live bettor."""
     t = t or RuleThresholds()
-    if f.prior_trades < t.active_min_trades:
+    if f.prior_trades < t.active_min_trades or f.prior_markets < t.active_min_markets:
         return False
     hours = max(f.wallet_age_hours or 0.0, 1.0)
     return Decimal(f.prior_trades) / Decimal(str(hours)) >= t.active_rate
@@ -188,6 +192,15 @@ def evaluate(f: TradeFeatures, t: RuleThresholds | None = None) -> list[str]:
     if fired and is_active_trader(f, t):
         fired = [r for r in fired if r not in FRESHNESS_RULES]
     return fired
+
+
+def dropped_for_activity(f: TradeFeatures, t: RuleThresholds | None = None) -> list[str]:
+    """Freshness rules the trade would fire if the wallet were not an active trader."""
+    t = t or RuleThresholds()
+    if not is_active_trader(f, t):
+        return []
+    off = replace(t, active_min_trades=10**9)
+    return [r for r in evaluate(f, off) if r in FRESHNESS_RULES]
 
 
 # Markets where the wide net applies live: elections and other politics with a known decision date.

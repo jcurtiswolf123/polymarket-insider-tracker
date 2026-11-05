@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -19,6 +20,7 @@ PAGE_LIMIT = 1000
 # reported as "many markets", which is all the rules need.
 MAX_PAGES = 3
 LONGSHOT_PRICE = Decimal("0.3")
+ACTIVE_MIN_TX_USDC = Decimal(os.environ.get("RULE_ACTIVE_MIN_TX_USDC", "50") or "50")
 
 
 @dataclass(frozen=True)
@@ -190,7 +192,13 @@ def features_for(
             paid[cid] = paid.get(cid, Decimal(0)) + usdc
     wins = sum(1 for cid, c in cost.items() if paid.get(cid, Decimal(0)) > c)
     age = (trade_ts - history.first_ts) / 3600 if history.first_ts else 0.0
-    prior_trades = 999 if history.truncated else len({h.transaction_hash or id(h) for h in prior})
+    # Distinct transactions worth >= ACTIVE_MIN_TX_USDC. Dust fills do not count, so a wallet
+    # cannot pad its trade count cheaply to look like a bot and dodge the freshness rules.
+    tx_usdc: dict[object, Decimal] = {}
+    for h in prior:
+        key = h.transaction_hash or id(h)
+        tx_usdc[key] = tx_usdc.get(key, Decimal(0)) + h.usdc
+    prior_trades = sum(1 for v in tx_usdc.values() if v >= ACTIVE_MIN_TX_USDC)
     return TradeFeatures(
         prior_trades=prior_trades,
         notional_usdc=notional_usdc,
