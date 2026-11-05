@@ -226,3 +226,38 @@ def append_features(row: dict[str, Any]) -> None:
             fh.write(json.dumps(row, default=str) + "\n")
     except OSError as e:
         logger.warning("features log write failed: %s", e)
+
+
+class PriceAnchoredModel:
+    """Logistic regression on logit(price) plus standardized features.
+
+    Starts from the market's own forecast and learns only what the wallet features add, so a
+    small or noisy training set falls back to the price instead of overfitting. Lives here (not
+    in the learner script) so the live pipeline can unpickle it.
+    """
+
+    def __init__(self, c: float = 0.01) -> None:
+        self.c = c
+        self.mu: Any = None
+        self.sd: Any = None
+        self.lr: Any = None
+
+    def _design(self, x: Any) -> Any:
+        import numpy as np
+
+        x = np.asarray(x, dtype=float)
+        p = np.clip(x[:, 0], 0.01, 0.99)  # FEATURE_NAMES[0] is price
+        return np.column_stack([np.log(p / (1 - p)), (x - self.mu) / self.sd])
+
+    def fit(self, x: Any, y: Any, sample_weight: Any = None) -> PriceAnchoredModel:
+        import numpy as np
+        from sklearn.linear_model import LogisticRegression
+
+        x = np.asarray(x, dtype=float)
+        self.mu, self.sd = x.mean(0), x.std(0) + 1e-9
+        self.lr = LogisticRegression(C=self.c, max_iter=2000)
+        self.lr.fit(self._design(x), y, sample_weight=sample_weight)
+        return self
+
+    def predict_proba(self, x: Any) -> Any:
+        return self.lr.predict_proba(self._design(x))

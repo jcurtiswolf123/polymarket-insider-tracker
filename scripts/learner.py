@@ -43,6 +43,7 @@ from polymarket_insider_tracker.detector.learned import (  # noqa: E402
     HOME,
     META_PATH,
     MODEL_PATH,
+    PriceAnchoredModel,
     vectorize,
 )
 
@@ -52,6 +53,10 @@ HISTORY_PATH = HOME / "learner_history.jsonl"
 GAMMA = "https://gamma-api.polymarket.com/markets"
 MIN_TEST = int(os.environ.get("ML_MIN_TEST", "300"))
 MIN_GAIN = float(os.environ.get("ML_MIN_BRIER_GAIN", "0.001"))
+# The model's own picks (edge >= 0.10) must have made money on the held-out slice, over at least
+# this many distinct wallet+market groups. Beating price on Brier alone can come from fixing the
+# favourite-longshot bias, which says nothing about who is informed.
+MIN_PICK_GROUPS = float(os.environ.get("ML_MIN_PICK_GROUPS", "30"))
 RECHECK_OPEN_S = 2 * 3600
 
 
@@ -159,15 +164,18 @@ def brier(p: np.ndarray, y: np.ndarray, w: np.ndarray) -> float:
     return float(np.sum(w * (p - y) ** 2) / np.sum(w))
 
 
-def new_model() -> HistGradientBoostingClassifier:
-    return HistGradientBoostingClassifier(
-        max_iter=250,
-        learning_rate=0.05,
-        max_leaf_nodes=15,
-        min_samples_leaf=40,
-        l2_regularization=1.0,
+CANDIDATES = {
+    "anchored_lr_c0.01": lambda: PriceAnchoredModel(0.01),
+    "anchored_lr_c0.03": lambda: PriceAnchoredModel(0.03),
+    "hgb_reg": lambda: HistGradientBoostingClassifier(
+        max_iter=150,
+        learning_rate=0.03,
+        max_leaf_nodes=7,
+        min_samples_leaf=200,
+        l2_regularization=5.0,
         random_state=7,
-    )
+    ),
+}
 
 
 def edge_bucket(
@@ -195,13 +203,24 @@ def train(rows: list[dict], labels: dict[str, dict]) -> dict:
         meta.update({"promoted": bool(prev.get("promoted")), "status": "not enough labels"})
         return meta
     cut = int(n * 0.75)
-    model = new_model().fit(x[:cut], y[:cut], sample_weight=w[:cut])
-    p = model.predict_proba(x[cut:])[:, 1]
     yt, wt, pt = y[cut:], w[cut:], price[cut:]
-    b_model, b_price = brier(p, yt, wt), brier(pt, yt, wt)
-    beats = (n - cut) >= MIN_TEST and b_model < b_price - MIN_GAIN
+    b_price = brier(pt, yt, wt)
+    scored = {}
+    for name, make in CANDIDATES.items():
+        p = make().fit(x[:cut], y[:cut], sample_weight=w[:cut]).predict_proba(x[cut:])[:, 1]
+        picks = edge_bucket(p, yt, pt, wt, 0.10)
+        scored[name] = (brier(p, yt, wt), picks, p)
+    name = min(scored, key=lambda k: scored[k][0])
+    b_model, picks, p = scored[name]
+    beats_brier = (n - cut) >= MIN_TEST and b_model < b_price - MIN_GAIN
+    picks_pay = picks["groups"] >= MIN_PICK_GROUPS and (picks["roi"] or -1) > 0
+    beats = beats_brier and picks_pay
     meta.update(
         {
+            "model": name,
+            "candidates": {k: round(v[0], 5) for k, v in scored.items()},
+            "beats_brier": beats_brier,
+            "picks_pay": picks_pay,
             "n_train": cut,
             "n_test": n - cut,
             "test_wallet_markets": round(float(wt.sum()), 1),
@@ -214,9 +233,14 @@ def train(rows: list[dict], labels: dict[str, dict]) -> dict:
         }
     )
     if not beats:
-        meta.update({"promoted": bool(prev.get("promoted")), "status": "kept previous model"})
+        meta.update(
+            {
+                "promoted": bool(prev.get("promoted")),
+                "status": "kept previous model" if prev.get("promoted") else "no model live yet",
+            }
+        )
         return meta
-    final = new_model().fit(x, y, sample_weight=w)  # validated; refit on everything
+    final = CANDIDATES[name]().fit(x, y, sample_weight=w)  # validated; refit on everything
     version = time.strftime("%Y%m%d-%H%M")
     meta.update({"promoted": True, "status": "promoted", "version": version})
     tmp = MODEL_PATH.with_suffix(".tmp")
