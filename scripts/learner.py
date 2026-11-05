@@ -58,6 +58,61 @@ MIN_GAIN = float(os.environ.get("ML_MIN_BRIER_GAIN", "0.001"))
 # favourite-longshot bias, which says nothing about who is informed.
 MIN_PICK_GROUPS = float(os.environ.get("ML_MIN_PICK_GROUPS", "30"))
 RECHECK_OPEN_S = 2 * 3600
+STATS_PATH = HOME / "rule_stats.json"
+SHADOW_PATH = HOME / "model_shadow.pkl"
+SHADOW_META_PATH = HOME / "model_shadow_meta.json"
+PRICE_EDGES = (0.2, 0.4, 0.6, 0.85)
+
+
+def price_bucket(price: float) -> int:
+    return next((i for i, e in enumerate(PRICE_EDGES) if price < e), len(PRICE_EDGES))
+
+
+def _atomic_json(path: Path, obj: object) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(obj, indent=1))
+    tmp.replace(path)
+
+
+def rule_stats(data: list) -> dict:
+    """Track record of resolved trades by rule and price bucket, one vote per wallet+market.
+
+    The SMS card reads this to say how trades like the one it is texting about have done.
+    """
+    groups = Counter((r.get("wallet"), r.get("market")) for r, _ in data)
+    acc: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0, 0.0])
+    for r, y in data:
+        price = float(r.get("price") or 0)
+        w = 1.0 / groups[(r.get("wallet"), r.get("market"))]
+        roi = (y - price) / max(price, 0.01)
+        b = price_bucket(price)
+        rules = {x[2:] if x.startswith("W_") else x for x in r.get("rules") or []}
+        keys = ["all", f"all|{b}"]
+        if rules:
+            keys += ["flagged", f"flagged|{b}"]
+        for ru in rules:
+            keys += [ru, f"{ru}|{b}"]
+        for k in keys:
+            a = acc[k]
+            a[0] += w
+            a[1] += w * y
+            a[2] += w * price
+            a[3] += w * roi
+            a[4] += 1
+    return {
+        "price_edges": PRICE_EDGES,
+        "updated": int(time.time()),
+        "stats": {
+            k: {
+                "groups": round(a[0], 1),
+                "n": int(a[4]),
+                "win_rate": round(a[1] / a[0], 4),
+                "avg_price": round(a[2] / a[0], 4),
+                "roi": round(a[3] / a[0], 4),
+            }
+            for k, a in acc.items()
+        },
+    }
 
 
 def tg(text: str) -> None:
@@ -197,6 +252,8 @@ def edge_bucket(
 def train(rows: list[dict], labels: dict[str, dict]) -> dict:
     data, x, y, w, price = dataset(rows, labels)
     n = len(data)
+    if data:
+        _atomic_json(STATS_PATH, rule_stats(data))
     meta: dict = {"trained_at": int(time.time()), "n_rows": len(rows), "n_labelled": n}
     prev = json.loads(META_PATH.read_text()) if META_PATH.exists() else {}
     if n < MIN_TEST * 4 or len(set(y.tolist())) < 2:
@@ -232,6 +289,13 @@ def train(rows: list[dict], labels: dict[str, dict]) -> dict:
             "edge_lt_0": edge_bucket(p, yt, pt, wt, 0.0, below=True),  # model: no edge
         }
     )
+    # Shadow model: best candidate refit on everything, saved even when not promoted, so the SMS
+    # card can show its read clearly labelled as unvalidated. The live gate never uses it.
+    shadow = CANDIDATES[name]().fit(x, y, sample_weight=w)
+    with open(SHADOW_PATH.with_suffix(".tmp"), "wb") as fh:
+        pickle.dump(shadow, fh)
+    SHADOW_PATH.with_suffix(".tmp").replace(SHADOW_PATH)
+    _atomic_json(SHADOW_META_PATH, {**meta, "version": time.strftime("%Y%m%d-%H%M")})
     if not beats:
         meta.update(
             {

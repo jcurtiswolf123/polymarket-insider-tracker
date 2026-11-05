@@ -9,7 +9,9 @@ Worth a text:
 Never: the same wallet + market twice in 24h, or more than SMS_DAILY_CAP texts a day.
 
 Env: SMS_TO (default +16462752111), SMS_FROM (default +18053087751), SMS_MIN_EDGE (0.12),
-     SMS_MIN_USDC (5000), SMS_MAX_PRICE (0.85), SMS_DAILY_CAP (8). Twilio creds from ~/.gstack/credentials.
+     SMS_MIN_USDC (5000), SMS_MAX_PRICE (0.85), SMS_DAILY_CAP (8),
+     SMS_BANKROLL (1000), SMS_MAX_BET_PCT (0.05), SMS_ONLY_BETS (1 = skip "no bet" texts).
+Each text carries win chance, bet size and a details link built by scripts/alert_card.py. Twilio creds from ~/.gstack/credentials.
   uv run --env-file .env python scripts/sms_alerts.py [--dry-run] [--test "message"]
 """
 
@@ -23,6 +25,8 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+import alert_card
 
 HOME = Path.home() / ".polywatch"
 HITS = HOME / "rule_hits.jsonl"
@@ -51,7 +55,7 @@ def send_sms(body: str, dry: bool) -> str:
         return "DRY"
     sid = (CREDS / "twilio-account-sid.txt").read_text().strip()
     tok = (CREDS / "twilio-auth-token.txt").read_text().strip()
-    data = urllib.parse.urlencode({"To": to, "From": frm, "Body": body[:600]}).encode()
+    data = urllib.parse.urlencode({"To": to, "From": frm, "Body": body[:900]}).encode()
     req = urllib.request.Request(
         f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json", data=data
     )
@@ -105,6 +109,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--test", help="send this text and exit")
+    ap.add_argument("--card", action="store_true", help="build the card for the last hit, print it")
     args = ap.parse_args()
     HOME.mkdir(parents=True, exist_ok=True)
     if args.test:
@@ -112,6 +117,11 @@ def main() -> None:
         with open(LOG, "a") as fh:
             fh.write(f"{time.strftime('%F %T')}\t{res}\tTEST\t{args.test}\n")
         print(res)
+        return
+    if args.card:
+        hit = json.loads(HITS.read_text().strip().splitlines()[-1])
+        body, md, link = alert_card.build(hit, publish_page=not args.dry_run)
+        print(md, "\n---SMS---\n" + body, f"\n({len(body)} chars)")
         return
     state = json.loads(STATE.read_text()) if STATE.exists() else {}
     if "offset" not in state:  # first run: start at the end, never text the backlog
@@ -139,7 +149,13 @@ def main() -> None:
             continue
         if state["days"].get(day, 0) >= cap:
             break
-        body = fmt(hit)
+        try:
+            body, _, _ = alert_card.build(hit, publish_page=not args.dry_run)
+        except Exception as e:  # the card is extra; never lose the alert over it
+            print(f"card failed: {e}")
+            body = fmt(hit)
+        if os.environ.get("SMS_ONLY_BETS") == "1" and "Play: BUY" not in body:
+            continue
         res = send_sms(body, args.dry_run)
         state["sent"][key] = now
         state["days"][day] = state["days"].get(day, 0) + 1
