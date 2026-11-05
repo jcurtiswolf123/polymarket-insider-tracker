@@ -149,13 +149,16 @@ def main() -> None:
             continue
         if state["days"].get(day, 0) >= cap:
             break
+        only_bets = os.environ.get("SMS_ONLY_BETS") == "1"
         try:
+            if only_bets and alert_card.recommend(hit)["bet_usd"] <= 0:
+                continue  # no edge: no text, no details page
             body, _, _ = alert_card.build(hit, publish_page=not args.dry_run)
         except Exception as e:  # the card is extra; never lose the alert over it
             print(f"card failed: {e}")
+            if only_bets:
+                continue
             body = fmt(hit)
-        if os.environ.get("SMS_ONLY_BETS") == "1" and "Play: BUY" not in body:
-            continue
         res = send_sms(body, args.dry_run)
         state["sent"][key] = now
         state["days"][day] = state["days"].get(day, 0) + 1
