@@ -144,7 +144,7 @@ def main() -> None:
             hit = json.loads(line)
         except ValueError:
             continue
-        key = f"{hit.get('wallet')}|{hit.get('market')}"
+        key = str(hit.get("market"))  # one text per market a day, however many wallets pile in
         if key in state["sent"] or not worth_text(hit, promoted):
             continue
         if state["days"].get(day, 0) >= cap:

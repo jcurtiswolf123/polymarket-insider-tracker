@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from polymarket_insider_tracker.detector.learned import (  # noqa: E402
     FEATURES_PATH,
     HOME,
+    META_PATH,
     LearnedModel,
     vectorize,
 )
@@ -39,6 +40,7 @@ SHADOW_PATH = HOME / "model_shadow.pkl"
 SHADOW_META_PATH = HOME / "model_shadow_meta.json"
 GAMMA = "https://gamma-api.polymarket.com/markets"
 PRIOR_GROUPS = 30.0  # history needs ~30 wallet+market groups before it moves the price halfway
+MODEL_MAX_DAYS = 30.0  # model trained on markets that resolved within days; no read past this
 RULE_LABEL = {
     "R1_fresh_big_bet": "fresh wallet, big bet",
     "R2_young_thin_wallet": "young wallet, thin history",
@@ -133,17 +135,50 @@ def shadow_p(row: dict | None) -> float | None:
         return None
 
 
+def model_edge_cap(meta: dict) -> float:
+    """Largest edge the held-out test shows actually paying (ROI > 0 on 15+ groups), else 0."""
+    cap = 0.0
+    for k, b in meta.items():
+        paid = isinstance(b, dict) and (b.get("roi") or 0) > 0 and (b.get("groups") or 0) >= 15
+        if k.startswith("edge_ge_") and paid:
+            cap = max(cap, float(k[len("edge_ge_") :]))
+    return cap
+
+
+def _days_left(m: dict) -> float | None:
+    from datetime import datetime
+
+    try:
+        t = datetime.fromisoformat((m.get("endDate") or "").replace("Z", "+00:00"))
+        return (t.timestamp() - time.time()) / 86400
+    except ValueError:
+        return None
+
+
 def recommend(hit: dict) -> dict:
     price = float(hit.get("price") or 0)
     rules = _rules(hit)
     row = _feature_row(hit.get("trade_id") or "")
     rec: dict[str, Any] = {"price": price, "rules": rules, "row": row}
+    m = _market(hit.get("market") or "")
+    days = _days_left(m)
     live = LearnedModel()
     verdict = live.score(row) if row and live.promoted else None
+    try:
+        cap = model_edge_cap(json.loads(META_PATH.read_text()))
+    except (OSError, ValueError):
+        cap = 0.0
+    if days is not None and days > MODEL_MAX_DAYS:
+        verdict = None  # out of the model's training range
+    if verdict and cap <= 0:
+        verdict = None  # no model edge size has paid on held-out trades
     tr = track_record(rules, price)
     rec["track"] = tr
     if verdict:
-        p, basis = verdict.p_win, f"learned model {verdict.version} (validated)"
+        p = price + max(-cap, min(verdict.p_win - price, cap))
+        basis = f"learned model {verdict.version} (validated)"
+        if abs(verdict.p_win - price) > cap:
+            basis += f", raw {verdict.p_win:.0%} capped at the +/-{cap:.0%} edge that paid"
     elif tr:
         label, s = tr
         excess = s["win_rate"] - s["avg_price"]
@@ -165,7 +200,6 @@ def recommend(hit: dict) -> dict:
             "max_price": round(price + (p - price) / 2, 2) if p > price else None,
         }
     )
-    m = _market(hit.get("market") or "")
     rec["market"] = m
     rec["starts_in_h"] = None
     gs = (m.get("gameStartTime") or "").strip()
