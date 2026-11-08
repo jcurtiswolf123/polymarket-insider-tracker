@@ -12,8 +12,8 @@ import alert_card  # noqa: E402
 
 META = {
     "promoted": True,
-    "edge_ge_0.10": {"groups": 91.5, "roi": 0.027},
-    "edge_ge_0.15": {"groups": 11.0, "roi": -0.361},
+    "edge_ge_0.10": {"groups": 200, "win_rate": 0.60, "avg_price": 0.50},
+    "edge_ge_0.15": {"groups": 11.0, "win_rate": 0.351, "avg_price": 0.509},
 }
 
 
@@ -39,7 +39,8 @@ def _setup(monkeypatch, tmp_path, p_win, days, meta=META, track=None):
 
 def test_edge_cap_from_meta():
     assert alert_card.model_edge_cap(META) == 0.10
-    assert alert_card.model_edge_cap({"edge_ge_0.10": {"groups": 91, "roi": -0.1}}) == 0.0
+    live_2026_11_07 = {"edge_ge_0.10": {"groups": 91.5, "win_rate": 0.563, "avg_price": 0.522}}
+    assert alert_card.model_edge_cap(live_2026_11_07) == 0.0  # +4 pts, z 0.8: noise
 
 
 def test_model_edge_capped(monkeypatch, tmp_path):
@@ -59,6 +60,6 @@ def test_long_horizon_skips_model(monkeypatch, tmp_path):
 
 
 def test_no_paying_edge_means_no_model(monkeypatch, tmp_path):
-    bad = {"promoted": True, "edge_ge_0.10": {"groups": 91, "roi": -0.1}}
+    bad = {"promoted": True, "edge_ge_0.10": {"groups": 91, "win_rate": 0.5, "avg_price": 0.52}}
     rec = alert_card.recommend(_setup(monkeypatch, tmp_path, 0.99, days=2, meta=bad))
     assert rec["p"] == 0.6 and rec["bet_usd"] == 0
