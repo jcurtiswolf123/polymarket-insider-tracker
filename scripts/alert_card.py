@@ -136,11 +136,15 @@ def shadow_p(row: dict | None) -> float | None:
 
 
 def model_edge_cap(meta: dict) -> float:
-    """Largest edge the held-out test shows actually paying (ROI > 0 on 15+ groups), else 0."""
+    """Largest edge the held-out test shows paying beyond noise (z >= 2 on 15+ groups), else 0."""
     cap = 0.0
     for k, b in meta.items():
-        paid = isinstance(b, dict) and (b.get("roi") or 0) > 0 and (b.get("groups") or 0) >= 15
-        if k.startswith("edge_ge_") and paid:
+        if not (k.startswith("edge_ge_") and isinstance(b, dict)):
+            continue
+        g, wr, px = b.get("groups") or 0, b.get("win_rate"), b.get("avg_price")
+        if g < 15 or wr is None or px is None or not 0 < wr < 1:
+            continue
+        if (wr - px) / (wr * (1 - wr) / g) ** 0.5 >= 2:
             cap = max(cap, float(k[len("edge_ge_") :]))
     return cap
 
