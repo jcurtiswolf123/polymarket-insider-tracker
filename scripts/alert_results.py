@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import sms_alerts
 
-STAKE = 100.0
+STAKE = 200.0
 HOME = Path.home() / ".polywatch"
 STATE = HOME / "alert_results_state.json"
 
