@@ -46,8 +46,32 @@ def parse_slug(slug: str):
     return lg, a.upper(), b.upper(), f"{y[2:]}{MONTHS[int(mo) - 1]}{d}"
 
 
-def match_kalshi(pm: dict, outcome: str):
-    """Kalshi market ticker for the picked team, or (None, reason)."""
+_EVENTS: dict = {}
+
+
+def events(series: str, status: str) -> list:
+    if (series, status) not in _EVENTS:
+        _EVENTS[series, status] = get(f"{K}/events?series_ticker={series}&status={status}&limit=200&with_nested_markets=true").get("events", [])
+    return _EVENTS[series, status]
+
+
+def norm(x: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (x or "").lower())
+
+
+def same_team(a: str, b: str) -> bool:
+    a, b = norm(a), norm(b)
+    return bool(a and b) and (a == b or (min(len(a), len(b)) >= 3 and (a in b or b in a)))
+
+
+def near_dates(date: str) -> list[str]:
+    from datetime import timedelta
+    d = datetime.strptime(date, "%y%b%d")
+    return [(d + timedelta(days=k)).strftime("%y%b%d").upper() for k in (0, -1, 1)]
+
+
+def match_kalshi(pm: dict, outcome: str, status: str = "open"):
+    """(Kalshi market, how) for the picked team, or (None, reason). Code match first, team-name match second."""
     if pm.get("sportsMarketType") != "moneyline":
         return None, f"not moneyline ({pm.get('sportsMarketType')})"
     s = parse_slug(pm.get("slug", ""))
@@ -60,16 +84,24 @@ def match_kalshi(pm: dict, outcome: str):
     outs = json.loads(pm["outcomes"])
     if outcome not in outs or len(outs) != 2:
         return None, "outcome not in 2-way market"
-    code = (a, b)[outs.index(outcome)]
-    for ev in get(f"{K}/events?series_ticker={series}&status=open&limit=200").get("events", []):
-        t = ev["event_ticker"]
-        tail = t.split("-", 1)[1] if "-" in t else ""
+    i = outs.index(outcome); code, other = (a, b)[i], outs[1 - i]
+    evs = events(series, status)
+    for ev in evs:  # 1) same team codes and date, as in nba-ind-dal-2026-11-09 vs KXNBAGAME-26NOV09INDDAL
+        tail = ev["event_ticker"].split("-", 1)[-1]
         if tail.startswith(date) and a in tail and b in tail:
-            for mk in get(f"{K}/markets?event_ticker={t}")["markets"]:
-                if mk["ticker"].endswith("-" + code):
-                    return mk, "ok"
-            return None, f"{t} has no market for {code}"
-    return None, f"no open Kalshi event {series} {date} {a}/{b}"
+            mk = next((m for m in ev.get("markets", []) if m["ticker"].endswith("-" + code)), None)
+            if mk:
+                return mk, "code"
+    for d in near_dates(date):  # 2) codes differ: both team names must match the two markets' team labels
+        for ev in evs:
+            if not ev["event_ticker"].split("-", 1)[-1].startswith(d):
+                continue
+            mks = ev.get("markets", [])
+            mine = [m for m in mks if same_team(m.get("yes_sub_title"), outcome)]
+            theirs = [m for m in mks if same_team(m.get("yes_sub_title"), other)]
+            if len(mine) == 1 and theirs and mine[0] not in theirs:
+                return mine[0], "name"
+    return None, f"no Kalshi event {series} {date} {a}/{b}"
 
 
 def new_alerts(state: dict):
@@ -126,6 +158,7 @@ def tick(dry: bool):
             if start and datetime.fromisoformat(start.replace(" ", "T").replace("+00", "+00:00")) < datetime.now(timezone.utc):
                 raise ValueError("game already started")
             mk, why = match_kalshi(pm, outcome)
+            row["match"] = why
             if not mk:
                 raise ValueError(why)
             ask = float(mk.get("yes_ask_dollars") or 0)
