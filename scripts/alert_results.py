@@ -88,5 +88,16 @@ def main(dry: bool):
         STATE.write_text(json.dumps(state))
 
 
+def summary(dry: bool):
+    """One nightly text: alert book (every alert, $200) + Kalshi mirror book."""
+    import kalshi_copy
+    d = list(json.loads(STATE.read_text())["done"].values()) if STATE.exists() else []
+    wins = sum(x["won"] for x in d); pnl = sum(x["pnl"] for x in d)
+    body = (f"Polywatch nightly (paper)\nAlerts: {wins}-{len(d) - wins}, {pnl:+.0f} on ${STAKE * len(d):.0f}"
+            f"\nKalshi copy: {kalshi_copy.book_line(kalshi_copy.rows())[6:]}")
+    print(body)
+    print(sms_alerts.send_sms(body, dry))
+
+
 if __name__ == "__main__":
-    main("--dry-run" in sys.argv)
+    summary("--dry-run" in sys.argv) if "--summary" in sys.argv else main("--dry-run" in sys.argv)
