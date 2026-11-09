@@ -260,16 +260,23 @@ def train(rows: list[dict], labels: dict[str, dict]) -> dict:
         meta.update({"promoted": bool(prev.get("promoted")), "status": "not enough labels"})
         return meta
     cut = int(n * 0.75)
-    yt, wt, pt = y[cut:], w[cut:], price[cut:]
+    # Grade only on markets absent from training: a market seen in both lets the trees memorise
+    # its outcome through market-level features (measured 2026-11-09: +24.7% ROI fell to -1.8%).
+    seen = {r.get("market") for r, _ in data[:cut]}
+    keep = np.array([r.get("market") not in seen for r, _ in data[cut:]])
+    if keep.sum() < MIN_TEST:
+        meta.update({"promoted": bool(prev.get("promoted")), "status": "not enough unseen-market test rows"})
+        return meta
+    yt, wt, pt = y[cut:][keep], w[cut:][keep], price[cut:][keep]
     b_price = brier(pt, yt, wt)
     scored = {}
     for name, make in CANDIDATES.items():
-        p = make().fit(x[:cut], y[:cut], sample_weight=w[:cut]).predict_proba(x[cut:])[:, 1]
+        p = make().fit(x[:cut], y[:cut], sample_weight=w[:cut]).predict_proba(x[cut:][keep])[:, 1]
         picks = edge_bucket(p, yt, pt, wt, 0.10)
         scored[name] = (brier(p, yt, wt), picks, p)
     name = min(scored, key=lambda k: scored[k][0])
     b_model, picks, p = scored[name]
-    beats_brier = (n - cut) >= MIN_TEST and b_model < b_price - MIN_GAIN
+    beats_brier = b_model < b_price - MIN_GAIN
     picks_pay = picks["groups"] >= MIN_PICK_GROUPS and (picks["roi"] or -1) > 0
     beats = beats_brier and picks_pay
     meta.update(
@@ -279,7 +286,7 @@ def train(rows: list[dict], labels: dict[str, dict]) -> dict:
             "beats_brier": beats_brier,
             "picks_pay": picks_pay,
             "n_train": cut,
-            "n_test": n - cut,
+            "n_test": int(keep.sum()),
             "test_wallet_markets": round(float(wt.sum()), 1),
             "brier_model": round(b_model, 5),
             "brier_price": round(b_price, 5),
