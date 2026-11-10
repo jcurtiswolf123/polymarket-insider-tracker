@@ -222,6 +222,11 @@ def report(sms: bool, dry: bool) -> None:
         text += "\nAll lane hits, by week\n" + "\n".join(sms_gate_replay.lane_lines())
     except Exception as e:  # the weekly text must still go out
         text += f"\n- live replay error {type(e).__name__}"
+    try:  # forward test of wallets with a proven in-play edge (scripts/edge/wallet_edge.py)
+        import skilled_live
+        text += "\n" + "\n".join(skilled_live.lines())
+    except Exception as e:
+        text += f"\n- skilled live error {type(e).__name__}"
     print("\n" + text)
     if sms:
         import sms_alerts
