@@ -88,13 +88,45 @@ def main(dry: bool):
         STATE.write_text(json.dumps(state))
 
 
+def _fav_line() -> str:
+    import fav_lane
+    s = fav_lane.summarize(fav_lane.ledger_rows())
+    if not s.get("resolved"):
+        return f"0 resolved, {s.get('open', 0)} open"
+    won = round(s["win_rate"] * s["resolved"])
+    return f"{won}-{s['resolved'] - won}, {s['pnl']:+.0f}, {s['open']} open"
+
+
+def _research_line() -> str:
+    sys.path.insert(0, str(Path(__file__).parent / "edge"))
+    import research_desk
+    rows = research_desk.ledger()
+    done = [r for r in rows if "won" in r]
+    return f"{len(rows)} forecasts, {len(done)} resolved"
+
+
+def _hormuz_line() -> str:
+    r = json.loads((Path.home() / ".polywatch/edge/hormuz_log.jsonl").read_text().splitlines()[-1])
+    return f"ma7 {r['ma7']:.1f} vs 60, model {r['model_p']:.0%} vs mkt {(r.get('market') or {}).get('yes', 0):.0%}"
+
+
+def _backfill_line() -> str:
+    last = (Path.home() / ".polywatch/history/run.log").read_text().splitlines()[-1]
+    return last[:60]
+
+
 def summary(dry: bool):
     """One nightly text: alert book (every alert, $200) + Kalshi mirror book."""
     import kalshi_copy
     d = list(json.loads(STATE.read_text())["done"].values()) if STATE.exists() else []
     wins = sum(x["won"] for x in d); pnl = sum(x["pnl"] for x in d)
-    body = (f"Polywatch nightly (paper)\nAlerts: {wins}-{len(d) - wins}, {pnl:+.0f} on ${STAKE * len(d):.0f}"
-            f"\nKalshi copy: {kalshi_copy.book_line(kalshi_copy.rows())[6:]}")
+    body = (f"Polywatch nightly (paper)\n- alerts: {wins}-{len(d) - wins}, {pnl:+.0f} on ${STAKE * len(d):.0f}"
+            f"\n- kalshi copy: {kalshi_copy.book_line(kalshi_copy.rows())[6:]}")
+    for name, fn in (("favorites", _fav_line), ("research", _research_line), ("hormuz", _hormuz_line), ("backfill", _backfill_line)):
+        try:
+            body += f"\n- {name}: {fn()}"
+        except Exception as e:  # one broken lane must not stop the nightly text
+            body += f"\n- {name}: error {type(e).__name__}"
     print(body)
     print(sms_alerts.send_sms(body, dry))
 
