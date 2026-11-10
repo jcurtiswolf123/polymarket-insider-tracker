@@ -188,7 +188,9 @@ def report_text(s: dict) -> str:
     lo, hi = s["ci90"]
     lines += [
         f"- resolved {s['resolved']}: won {s['win_rate']:.0%} at avg fill {s['avg_fill']:.2f}",
-        f"- edge {s['excess']:+.1%} (90% CI {lo:+.0%} to {hi:+.0%})",
+        # bootstrap of a few all-win bets gives a fake-narrow CI
+        f"- edge {s['excess']:+.1%} "
+        + (f"(90% CI {lo:+.0%} to {hi:+.0%})" if s["resolved"] >= 20 else "(CI needs 20+ bets)"),
         f"- pnl ${s['pnl']:+,.0f} ({s['roi']:+.0%}) at ${STAKE:.0f}/bet",
     ]
     if s["resolved"] < 100:
