@@ -84,3 +84,23 @@ for k in sorted(wk):
     rs = wk[k]; ys = [ms[r["market"]]["prices"][r["outcome_index"]] for r in rs]; px = [r["price"] for r in rs]
     v = [roi(y, p) for y, p in zip(ys, px)]
     print(f"{k} n {len(rs):3d} win {sum(ys)/len(ys):.2f} px {sum(px)/len(px):.2f} win-px {sum(ys)/len(ys)-sum(px)/len(px):+.2f} roi {sum(v)/len(v):+.3f}")
+
+print("\n== hot-hand filter: bet only when recent resolved lane bets were profitable (known at bet time) ==")
+bets = sorted((r for (m, o, v), r in first.items() if v == "lane+pregame_not_active"), key=lambda r: r["ts"])
+for r in bets:
+    r["_end"] = r["ts"] + r["hours_to_end"] * 3600
+    r["_roi"] = roi(ms[r["market"]]["prices"][r["outcome_index"]], r["price"])
+def run(label, recent):
+    taken = []
+    for r in bets:
+        done = [b for b in bets if b["_end"] < r["ts"]]
+        sig = recent(done, r["ts"])
+        if sig is not None and sum(b["_roi"] for b in sig) / len(sig) > 0: taken.append(r["_roi"])
+    random.seed(0)
+    bs = sorted(sum(random.choices(taken, k=len(taken))) / len(taken) for _ in range(1000)) if taken else [0] * 1000
+    print(f"{label:<40} bets {len(taken):4d} of {len(bets)} | roi {sum(taken)/max(len(taken),1):+.3f} [{bs[50]:+.3f},{bs[950]:+.3f}]")
+print(f"{'bet every hit (baseline)':<40} bets {len(bets):4d} | roi {sum(b['_roi'] for b in bets)/len(bets):+.3f}")
+for d in (3, 7, 14):
+    run(f"trailing {d} days > 0", lambda done, ts, d=d: [b for b in done if b["_end"] >= ts - d * 86400] or None)
+for n in (10, 20, 40):
+    run(f"last {n} resolved > 0", lambda done, ts, n=n: sorted(done, key=lambda b: b["_end"])[-n:] if len(done) >= n else None)
