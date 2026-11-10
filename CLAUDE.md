@@ -20,7 +20,8 @@
 
 **History backfill**
 - `scripts/history_backfill.py status|repair|eval`, data `~/.polywatch/history/`, log `run.log`
-- `scripts/backfill_chain.sh` (running): repair, features, eval, then SMS
+- launchd `com.josh.polywatch-backfill` runs `scripts/backfill_job.sh`: resumes after reboot, eval + SMS, writes `history/DONE`
+- launchd `com.josh.polywatch-watchdog` (10 min) runs `scripts/watchdog.sh`: texts on battery <=30% unplugged, stale scanner/watch/backfill, nonzero job exit; 3h dedupe
 
 **Constraints**
 - Polymarket main = data only (CA geoblock); trade venue Kalshi
