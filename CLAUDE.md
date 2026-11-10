@@ -1,0 +1,28 @@
+**Fork ops (branch josh/learned-scoring-sms).** Upstream rules: AGENTS.md. This checkout is live: launchd jobs run from it, so never switch branches here (a 2026-11-09 switch dropped fav_lane.py and broke a job for hours). Use `git worktree` for other branches.
+
+**Every command**
+- prefix `export _ZO_DOCTOR=0;`
+- `uv run --env-file .env python scripts/<x>.py`
+- DB: `docker exec -i polymarket-postgres psql -U tracker -d polymarket_tracker`
+- CLI: `~/.claude/bin/polywatch help`
+
+**Paper lanes (no live orders; real money needs Joshua's explicit "live" + caps)**
+- alert book: `scripts/alert_results.py` (every 30m), nightly text `--summary` at 21:00
+- Kalshi mirror: `scripts/kalshi_copy.py report` (every 2m)
+- favorites: `scripts/fav_lane.py report` (every 1m), $200/bet
+- learner: `scripts/learner.py --report`
+- research desk: `scripts/edge/research_desk.py report|grade|run -n 20` (06:15, claude -p, Sonnet)
+- hormuz: `scripts/edge/hormuz.py status` (07:05)
+- nowcast TSA/gas: `scripts/edge/nowcast.py scan` (08:30), backtest FAIL 11-09, re-test ~Feb
+- killed 11-09 (backtest FAIL): `scripts/edge/weather.py`, `scripts/edge/touch.py`
+- gate for any lane: ROI > +5% after Kalshi fee on 200+ out-of-sample bets
+- status doc: `docs/edge-builds-2026-11-09.md`
+
+**History backfill**
+- `scripts/history_backfill.py status|repair|eval`, data `~/.polywatch/history/`, log `run.log`
+- `scripts/backfill_chain.sh` (running): repair, features, eval, then SMS
+
+**Constraints**
+- Polymarket main = data only (CA geoblock); trade venue Kalshi
+- secrets in `~/.gstack/credentials/`, `.env`; never print them
+- Kalshi public API rate-limits: retry 429/timeouts with backoff
