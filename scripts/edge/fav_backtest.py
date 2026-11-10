@@ -9,6 +9,7 @@ for l in open(H / "markets.jsonl"):
     m = json.loads(l); p = m.get("prices") or []
     if p and max(p) == 1.0: ms[m["cid"]] = m
 CUT = datetime(2026, 10, 24, tzinfo=timezone.utc).timestamp()
+WK = datetime(2026, 11, 3, 16, tzinfo=timezone.utc).timestamp()
 def c1_keys():
     """Trades where live C1_fresh_cluster would fire: 3+ wallets <168h old, same side, 24h window, $5K+ combined."""
     ev = []
@@ -64,9 +65,22 @@ for v in ("lane", "lane+pregame_not_active", "no_rule_gate+pregame_not_active", 
     stats(rs, "all")
     stats([r for r in rs if r["ts"] < CUT], "before 10-24")
     stats([r for r in rs if r["ts"] >= CUT], "after 10-24 (out of sample)")
+    stats([r for r in rs if r["ts"] >= WK], "11-03 on (live week)")
+    stats([r for r in rs if r["ts"] < WK], "before 11-03")
     sp = lambda r: bool(SPORT.search(f"{r.get('slug','')} {r.get('title','')}"))
     stats([r for r in rs if sp(r)], "sports/esports")
     stats([r for r in rs if not sp(r)], "other")
     for lo, hi in ((0.60, 0.70), (0.70, 0.78), (0.78, 0.85)):
         stats([r for r in rs if lo <= r["price"] < hi], f"price {lo:.2f}-{hi:.2f}")
     stats([r for r in rs if r["age_h"] < 24], "wallet < 24h")
+
+print("\n== lane+pregame_not_active by week (Monday start) ==")
+from collections import defaultdict
+wk = defaultdict(list)
+for (m, o, v), r in first.items():
+    if v == "lane+pregame_not_active":
+        wk[datetime.fromtimestamp(r["ts"], timezone.utc).strftime("%G-W%V")].append(r)
+for k in sorted(wk):
+    rs = wk[k]; ys = [ms[r["market"]]["prices"][r["outcome_index"]] for r in rs]; px = [r["price"] for r in rs]
+    v = [roi(y, p) for y, p in zip(ys, px)]
+    print(f"{k} n {len(rs):3d} win {sum(ys)/len(ys):.2f} px {sum(px)/len(px):.2f} win-px {sum(ys)/len(ys)-sum(px)/len(px):+.2f} roi {sum(v)/len(v):+.3f}")
