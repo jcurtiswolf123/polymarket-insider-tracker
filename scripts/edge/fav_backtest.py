@@ -9,6 +9,22 @@ for l in open(H / "markets.jsonl"):
     m = json.loads(l); p = m.get("prices") or []
     if p and max(p) == 1.0: ms[m["cid"]] = m
 CUT = datetime(2026, 10, 24, tzinfo=timezone.utc).timestamp()
+def c1_keys():
+    """Trades where live C1_fresh_cluster would fire: 3+ wallets <168h old, same side, 24h window, $5K+ combined."""
+    ev = []
+    for l in open(H / "rows.jsonl"):
+        if '"sell": 0' not in l: continue
+        r = json.loads(l)
+        if r.get("age_h") is not None and r["age_h"] <= 168:
+            ev.append((r["ts"], r["market"], r["outcome_index"], r["wallet"], float(r["usdc"] or 0), r.get("trade_id")))
+    ev.sort(); buckets, fired = {}, set()
+    for ts, m, o, w, u, tid in ev:
+        b = buckets.setdefault((m, o), {})
+        prev = b.get(w); b[w] = (ts, (prev[1] if prev else 0) + u)
+        for k in [k for k, v in b.items() if ts - v[0] > 86400]: del b[k]
+        if len(b) >= 3 and sum(v[1] for v in b.values()) >= 5000: fired.add((tid, w))
+    return fired
+C1 = c1_keys()
 first = {}  # (market, outcome, variant) -> row
 for l in open(H / "rows.jsonl"):
     if '"sell": 0' not in l: continue
@@ -19,7 +35,12 @@ for l in open(H / "rows.jsonl"):
     if age is None or hte is None or r["market"] not in ms: continue
     if not (0.60 <= px < 0.85 and usdc >= 1000 and age < 168 and 0 < hte <= 168): continue
     rules = {x.removeprefix("W_") for x in r.get("rules") or []} - {"M1_model_edge"}
-    for v in (("lane",) if rules else ()) + ("no_rule_gate",):
+    if (r.get("trade_id"), r["wallet"]) in C1: rules.add("C1_fresh_cluster")  # history rows never computed C1
+    live_like = not r.get("in_play") and not r.get("active")  # live alerts drop in-play games and very active traders
+    vs = (("lane",) if rules else ()) + ("no_rule_gate",)
+    vs += tuple(v + "+pregame_not_active" for v in vs) if live_like else ()
+    if "C1_fresh_cluster" in rules: vs += ("c1",) + (("c1+pregame",) if not r.get("in_play") else ())
+    for v in vs:
         k = (r["market"], r["outcome_index"], v)
         if k not in first or r["ts"] < first[k]["ts"]: first[k] = r
 fee = lambda p: 0.07 * (1 - p)
@@ -37,7 +58,7 @@ def stats(rs, label):
         out.append(f"{'fill' if col=='price' else '@'+col[2:]+'m'} {sum(v)/len(v):+.3f} [{bs[50]:+.3f},{bs[950]:+.3f}]")
     print(" | ".join(out))
 random.seed(0)
-for v in ("lane", "no_rule_gate"):
+for v in ("lane", "lane+pregame_not_active", "no_rule_gate+pregame_not_active", "c1", "c1+pregame"):
     rs = [r for (m, o, vv), r in first.items() if vv == v]
     print(f"\n== {v} (first hit per market+side, $1, Kalshi fee, 90% CI) ==")
     stats(rs, "all")
