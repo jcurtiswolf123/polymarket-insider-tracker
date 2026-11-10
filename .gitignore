@@ -118,3 +118,4 @@ Thumbs.db
 .direnv/
 .claude/skills/
 .gstack/
+.claude/worktrees/
