@@ -6,7 +6,9 @@ cd ~/Projects/forked-tools/polymarket-insider-tracker || exit 1
 H=~/.polywatch/history; L=$H/run.log
 [ -f $H/DONE ] && exit 0
 echo "job start $(date)" >> $L
-caffeinate -i uv run --env-file .env python scripts/history_backfill.py run --since 2026-08-01 --min-volume 10000 >> $L 2>&1 || exit 1
+for s in markets trades features; do  # not "run": it ends with eval, which runs again below
+  caffeinate -i uv run --env-file .env python scripts/history_backfill.py $s --since 2026-08-01 --min-volume 10000 >> $L 2>&1 || exit 1
+done
 uv run --env-file .env python scripts/history_backfill.py eval > $H/eval.txt 2>&1 || exit 1
 uv run --env-file .env python - <<'PY' || exit 1
 import sys; sys.path.insert(0, "scripts"); import sms_alerts
