@@ -13,6 +13,15 @@ DELAYS = (0, 5, 15, 30, 60, 120)
 
 
 def fills(cid):
+    c = H / "tapes" / f"{cid}.json"  # disk cache: resolved markets never change
+    if c.exists():
+        return tuple(json.loads(c.read_text()))
+    out = _fetch(cid)
+    c.parent.mkdir(exist_ok=True); c.write_text(json.dumps(out))
+    return out
+
+
+def _fetch(cid):
     params, raw = {"condition": cid, "limit": 500}, []
     for _ in range(40):
         try:
