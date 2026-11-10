@@ -4,7 +4,8 @@ This file only reads data and logs a signal; it never trades.
 
 uv run --env-file .env python scripts/edge/hormuz.py status | tick | sar
 shortcut: first-passage model is a zero-or-trend GBM on the MA, not a traffic model; replace once AIS counts exist.
-shortcut: AIS counting needs AISSTREAM_API_KEY (not set here), so `status` reports it as blocked.
+AIS: aisstream.io free key works (English Channel 23 ships/2 min) but the Gulf is near-blind (2 ships/2 min across
+23-30.5N 50-60E, 1 in the strait box, probed 2026-11-10). Live counting needs paid satellite AIS (Spire, MarineTraffic).
 """
 import json, math, os, sys, urllib.parse, urllib.request
 from datetime import date, datetime, timedelta, timezone
@@ -105,7 +106,8 @@ def snapshot() -> dict:
             "max_ma7_ever": round(max(v for _, v in ma), 2), "to_60": round(THRESHOLD - last_ma, 3),
             "days_left": left, "model_p": round(mdl["p"], 5), "mu": round(mdl["mu"], 5),
             "sigma": round(mdl["sigma"], 5), "market": market(),
-            "ais": "blocked: AISSTREAM_API_KEY unset" if not os.environ.get("AISSTREAM_API_KEY") else "key set, counter not built"}
+            "ais": "blocked: AISSTREAM_API_KEY unset" if not os.environ.get("AISSTREAM_API_KEY")
+            else "key set; free feed has no Gulf coverage, counter not built"}
 
 
 def status(sn: dict) -> str:

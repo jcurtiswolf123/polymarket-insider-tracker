@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 H = Path(os.environ.get("PW_HISTORY_DIR") or Path.home() / ".polywatch" / "history")
 H.mkdir(parents=True, exist_ok=True)
 MARKETS, TRADES, ROWS, STATE = H / "markets.jsonl", H / "trades.jsonl", H / "rows.jsonl", H / "state.json"
+FSTATE = H / "features_state.json"  # own file so features can run while trades still appends
 GAMMA = "https://gamma-api.polymarket.com/markets"
 TRADES_URL = "https://data-api.polymarket.com/v2/trades"
 MIN_EVAL_ROWS = 2000
@@ -42,7 +43,25 @@ def save(s: dict) -> None:
 
 
 def jl(path: Path):
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()] if path.exists() else []
+    out = []
+    for l in path.read_text().splitlines() if path.exists() else []:
+        try:
+            out.append(json.loads(l))
+        except json.JSONDecodeError:
+            pass  # a line still being appended by another stage
+    return out
+
+
+def trade_key(t: dict) -> str:
+    return f'{t["wallet"]}|{t.get("tx")}|{t["cid"]}|{t["outcome_index"]}|{t["ts"]}'
+
+
+def fstate() -> set:
+    return set(json.loads(FSTATE.read_text())) if FSTATE.exists() else set()
+
+
+def fsave(done: set) -> None:
+    FSTATE.with_suffix(".tmp").write_text(json.dumps(sorted(done))); FSTATE.with_suffix(".tmp").replace(FSTATE)
 
 
 def stage_markets(since: str, min_vol: float) -> None:
@@ -207,18 +226,19 @@ async def stage_features() -> None:
     from polymarket_insider_tracker.detector.insider_rules import RuleThresholds, evaluate_tiered, is_active_trader, is_watch_market
     from polymarket_insider_tracker.pipeline import _parse_ts
     from polymarket_insider_tracker.profiler.wallet_history import features_for, fetch_wallet_history
-    s = state(); done = set(s["wallets_done"])
+    done = fstate()  # per trade, so a wallet with trades pulled later gets those rows on the next pass
     ms = {m["cid"]: m for m in jl(MARKETS)}
-    by_wallet = defaultdict(list)
+    by_wallet = defaultdict(dict)
     for t in jl(TRADES):
-        by_wallet[t["wallet"]].append(t)
-    todo = [w for w in by_wallet if w not in done]
-    print("features: wallets", len(by_wallet), "todo", len(todo), flush=True)
-    base, sem, out, n = RuleThresholds(), asyncio.Semaphore(6), ROWS.open("a"), 0
+        if (k := trade_key(t)) not in done:
+            by_wallet[t["wallet"]][k] = t
+    todo = list(by_wallet)
+    print("features: wallets todo", len(todo), "trades", sum(map(len, by_wallet.values())), flush=True)
+    base, sem, out, n = RuleThresholds(), asyncio.Semaphore(3), ROWS.open("a"), 0
     async with httpx.AsyncClient(timeout=20.0) as client:
         async def one(w: str):
             nonlocal n
-            items = by_wallet[w]
+            items = list(by_wallet[w].values())
             async with sem:
                 try:  # history only up to this wallet's last sampled trade: nothing after it can leak in
                     hist = await fetch_wallet_history(w, client=client, until_ts=max(t["ts"] for t in items), max_pages=6)
@@ -247,11 +267,11 @@ async def stage_features() -> None:
                     "event": m.get("event"), **track_record(hist, t["ts"], t["cid"], ms),
                     "watch": int(watch), "active": int(is_active_trader(f, base)), "rules": evaluate_tiered(f, watch, base),
                     "source": "history"}) + "\n")
-            s["wallets_done"].append(w); n += 1
+            done.update(by_wallet[w]); n += 1
             if n % 200 == 0:
-                out.flush(); save(s); print("features", n, "/", len(todo), flush=True)
+                out.flush(); fsave(done); print("features", n, "/", len(todo), flush=True)
         await asyncio.gather(*(one(w) for w in todo))
-    out.close(); save(s)
+    out.close(); fsave(done)
 
 
 EXTRA = ("sell", "prior_settled", "prior_win_rate", "prior_roi", "cat_settled", "cat_win_rate", "cluster6h")
