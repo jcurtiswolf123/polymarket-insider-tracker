@@ -41,3 +41,19 @@ def test_track_record_uses_only_markets_closed_before_trade():
           "later": {"end": "1970-01-01T05:00:00Z"}, "now": {"question": "x"}}
     r = track_record(hist, 1000, "now", ms)
     assert r["prior_settled"] == 2 and r["prior_win_rate"] == 0.5 and r["prior_roi"] == 0.25
+
+
+def test_repair_replaces_errored_markets(tmp_path, monkeypatch):
+    import json as _j
+    from scripts import history_backfill as hb
+    a, b = "0xaaaaaaaa" + "1" * 56, "0xbbbbbbbb" + "2" * 56
+    monkeypatch.setattr(hb, "MARKETS", tmp_path / "m.jsonl")
+    monkeypatch.setattr(hb, "TRADES", tmp_path / "t.jsonl")
+    hb.MARKETS.write_text("\n".join(_j.dumps({"cid": c, "n_out": 2}) for c in (a, b)) + "\n")
+    hb.TRADES.write_text(_j.dumps({"cid": a, "old": 1}) + "\n" + _j.dumps({"cid": b, "keep": 1}) + "\n")
+    log = tmp_path / "run.log"
+    log.write_text("trades 120 / 2\ntrades err 0xaaaaaaaa urlopen error\n")
+    monkeypatch.setattr(hb, "market_lines", lambda c, m: [_j.dumps({"cid": c, "new": 1}) + "\n"])
+    hb.stage_repair(log)
+    rows = [_j.loads(x) for x in hb.TRADES.read_text().splitlines()]
+    assert {"cid": b, "keep": 1} in rows and {"cid": a, "new": 1} in rows and not any(r.get("old") for r in rows)

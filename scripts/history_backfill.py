@@ -7,7 +7,7 @@ uv run --env-file .env python scripts/history_backfill.py status | eval
 Every stage appends and skips work already done, so a killed run resumes where it stopped.
 Writes only under ~/.polywatch/history/; the live model is never touched.
 """
-import argparse, asyncio, bisect, functools, json, os, sys, time, urllib.parse, urllib.request
+import argparse, asyncio, bisect, functools, json, os, re, sys, time, urllib.parse, urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -165,6 +165,33 @@ def stage_trades(workers: int = 6) -> None:
             print("trades", len(s["markets_done"]), "/", len(ms), flush=True)
 
 
+def stage_repair(log: Path) -> None:
+    """Refetch markets whose trade pull errored (e.g. a network outage) and replace their lines in TRADES."""
+    pre = set(re.findall(r"^trades err (0x[0-9a-f]{8})", log.read_text(), re.M))
+    ms = {m["cid"]: m for m in jl(MARKETS)}
+    bad = [c for c in ms if c[:10] in pre]
+    print("repair: markets", len(bad), flush=True)
+    fresh = []
+    for i, c in enumerate(bad):
+        fresh.append(market_lines(c, ms[c]))
+        if i % 100 == 99:
+            print("repair", i + 1, "/", len(bad), flush=True)
+    still = sum(1 for c, ls in zip(bad, fresh) if not ls and ms[c].get("n_out") == 2)
+    badset, tmp = set(bad), TRADES.with_suffix(".repair")
+    with TRADES.open() as src, tmp.open("w") as out:
+        for line in src:
+            try:
+                if json.loads(line)["cid"] in badset:
+                    continue
+            except json.JSONDecodeError:
+                continue
+            out.write(line)
+        for ls in fresh:
+            out.writelines(ls)
+    tmp.replace(TRADES)
+    print("repair done; markets still empty", still, flush=True)
+
+
 @functools.lru_cache(maxsize=200_000)
 def cat_of(question) -> str:
     from polymarket_insider_tracker.detector.learned import category
@@ -234,7 +261,7 @@ async def stage_features() -> None:
             by_wallet[t["wallet"]][k] = t
     todo = list(by_wallet)
     print("features: wallets todo", len(todo), "trades", sum(map(len, by_wallet.values())), flush=True)
-    base, sem, out, n = RuleThresholds(), asyncio.Semaphore(3), ROWS.open("a"), 0
+    base, sem, out, n = RuleThresholds(), asyncio.Semaphore(6), ROWS.open("a"), 0
     async with httpx.AsyncClient(timeout=20.0) as client:
         async def one(w: str):
             nonlocal n
@@ -315,7 +342,12 @@ def stage_eval() -> None:
     import learner
     ms = {m["cid"]: m for m in jl(MARKETS)}
     labels = {c: {"closed": True, "prices": m["prices"]} for c, m in ms.items()}
-    all_rows = jl(ROWS); add_clusters(all_rows)
+    seen, all_rows = set(), []
+    for r in jl(ROWS):  # a killed-and-resumed features pass can write a wallet's rows twice
+        k = (r["wallet"], r.get("trade_id"), r["market"], r["outcome_index"], r["ts"])
+        if k not in seen:
+            seen.add(k); all_rows.append(r)
+    add_clusters(all_rows)
     data, x, y, w, price = learner.dataset(all_rows, labels)
     if len(data) < MIN_EVAL_ROWS:
         sys.exit(f"only {len(data)} labelled rows; let the backfill run longer")
@@ -379,7 +411,7 @@ def status() -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["run", "markets", "trades", "features", "eval", "status"])
+    ap.add_argument("cmd", choices=["run", "markets", "trades", "repair", "features", "eval", "status"])
     ap.add_argument("--since", default="2026-05-01")
     ap.add_argument("--min-volume", type=float, default=10000)
     a = ap.parse_args()
@@ -387,4 +419,5 @@ if __name__ == "__main__":
     if a.cmd in ("run", "trades"): stage_trades()
     if a.cmd in ("run", "features"): asyncio.run(stage_features())
     if a.cmd in ("run", "eval"): stage_eval()
+    if a.cmd == "repair": stage_repair(H / "run.log")
     if a.cmd == "status": status()
