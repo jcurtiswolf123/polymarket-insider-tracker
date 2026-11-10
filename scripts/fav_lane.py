@@ -4,7 +4,7 @@ Lane (from resolved trades 2026-11-03..07: +13.5 pts over price across 51 market
   a fresh wallet (< 7d old) flagged by an insider rule, buying at 0.60-0.85, in a market that
   resolves within 7 days. The model-only rule M1 does not count.
 
-tick:   every new hit in the lane is filled on paper against the live order book, $50 per market,
+tick:   every new hit in the lane is filled on paper against the live order book, $200 per market,
         limit = insider price + LANE_SLIP. Misses (no ask under the limit) are logged too.
 report: resolved win rate vs fill price, bootstrap CI by market, flat-stake P&L.
         --sms texts the summary (weekly launchd job).
@@ -34,7 +34,7 @@ LANE_MIN, LANE_MAX = 0.60, 0.85
 MAX_HOURS_TO_END = 168.0
 MAX_WALLET_AGE_H = 168.0
 MIN_USDC = 1000.0
-STAKE = float(os.environ.get("LANE_STAKE", "50"))
+STAKE = float(os.environ.get("LANE_STAKE", "200"))
 SLIP = float(os.environ.get("LANE_SLIP", "0.04"))  # about half the measured edge
 SPORT = re.compile(
     r"^(nfl|nba|mlb|nhl|cfb|cbb|epl|ucl|lal|sea|bun|fl1|mls|ufc|atp|wta|cs2|lol|val|dota)-|-vs-| vs\.? "
