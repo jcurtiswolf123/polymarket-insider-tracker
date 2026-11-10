@@ -25,10 +25,12 @@ from zoneinfo import ZoneInfo
 K = "https://api.elections.kalshi.com/trade-api/v2"
 OM_PREV = "https://previous-runs-api.open-meteo.com/v1/forecast"
 OM_FC = "https://api.open-meteo.com/v1/forecast"
+OM_RUN = "https://single-runs-api.open-meteo.com/v1/forecast"
+RUNS = {"eve": (-1, 12), "morn": (0, 0)}  # snapshot -> (day offset, UTC init hour) of the run public by then
 IEM = "https://mesonet.agron.iastate.edu/json/cli.py"
 CACHE = Path.home() / ".polywatch" / "edge" / "weather"
 STAKE = 200.0
-MODELS = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless", "gem_seamless"]
+MODELS = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless", "gem_seamless", "ncep_nbm_conus", "ncep_hrrr_conus"]
 WINDOW, MIN_HIST, MIN_SD = 45, 15, 1.2
 THRESHOLDS = [0.03, 0.05, 0.08, 0.10, 0.15]
 TEST_DAYS = 30
@@ -62,9 +64,13 @@ def get(url: str, tries: int = 9):
             req = urllib.request.Request(url, headers={"User-Agent": "polywatch-edge"})
             return json.load(urllib.request.urlopen(req, timeout=60))
         except urllib.error.HTTPError as e:
-            if e.code != 429 or i == tries - 1:
+            if e.code not in (429, 500, 502, 503, 504) or i == tries - 1:
                 raise
             time.sleep(min(30, 2**i))
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if i == tries - 1:
+                raise
+            time.sleep(min(60, 2**i))  # network blip
     return None
 
 
@@ -157,6 +163,43 @@ def fetch_forecasts(series: str, start: date, end: date) -> dict:
     return {m: daily_max(h, f"temperature_2m_previous_day1_{m}") for m in MODELS}
 
 
+def fetch_run(series: str, d: date, snap: str) -> dict:
+    """Daily max for local date d from the one model run that existed at the snapshot."""
+    _, lat, lon, tz = STATIONS[series]
+    off, hr = RUNS[snap]
+    init = d + timedelta(days=off)
+    q = {"latitude": lat, "longitude": lon, "timezone": tz, "temperature_unit": "fahrenheit", "hourly": "temperature_2m",
+         "models": ",".join(MODELS), "run": f"{init.isoformat()}T{hr:02d}:00", "forecast_days": 3}
+    try:
+        h = get(f"{OM_RUN}?{urllib.parse.urlencode(q)}")["hourly"]
+    except urllib.error.HTTPError:
+        return {}
+    k = d.isoformat()
+    return {m: v for m in MODELS if (v := daily_max(h, f"temperature_2m_{m}").get(k)) is not None}
+
+
+def cmd_runs(days: int) -> None:
+    """Add run-specific forecasts to each cached series (resumable)."""
+    for s in STATIONS:
+        p = CACHE / f"{s}.json"
+        if not p.exists():
+            continue
+        blob = json.loads(p.read_text())
+        runs = blob.setdefault("runs", {"eve": {}, "morn": {}})
+        for snap in RUNS:
+            for m in MODELS:
+                runs[snap].setdefault(m, {})
+        start = date.today() - timedelta(days=days + WINDOW + 5)
+        todo = [(start + timedelta(days=i), snap) for i in range((date.today() - start).days) for snap in RUNS
+                if (start + timedelta(days=i)).isoformat() not in runs[snap]["ncep_nbm_conus"]]
+        with ThreadPoolExecutor(1) as ex:  # Open-Meteo free tier: 600 calls/min
+            for (d, snap), r in zip(todo, ex.map(lambda x: fetch_run(s, *x), todo), strict=True):
+                for m, v in r.items():
+                    runs[snap][m][d.isoformat()] = v
+        p.write_text(json.dumps(blob))
+        print(f"{s}: runs eve {len(runs['eve'][MODELS[0]])} morn {len(runs['morn'][MODELS[0]])}", flush=True)
+
+
 def fetch_cli(series: str, years: list[int]) -> dict:
     st = STATIONS[series][0]
     out = {}
@@ -192,29 +235,30 @@ def cmd_fetch(days: int) -> None:
 def calib(fc: dict, cli: dict, d: date):
     """Rolling past-only bias per model and blend sd from the WINDOW days before d."""
     days = [(d - timedelta(days=i)).isoformat() for i in range(2, WINDOW + 2)]  # d-1 truth not final at snapshot
-    bias, res = {}, []
+    bias, wt, res = {}, {}, []
     for m in MODELS:
         r = [cli[x] - fc[m][x] for x in days if x in cli and x in fc.get(m, {})]
         if len(r) >= MIN_HIST:
             bias[m] = mean(r)
+            wt[m] = 1 / max(0.25, pstdev(r) ** 2)  # inverse error variance after bias removal
     if not bias:
         return None
     for x in days:
-        vals = [fc[m][x] + bias[m] for m in bias if x in fc[m]]
+        vals = [(fc[m][x] + bias[m], wt[m]) for m in bias if x in fc[m]]
         if x in cli and vals:
-            res.append(cli[x] - mean(vals))
+            res.append(cli[x] - sum(v * q for v, q in vals) / sum(q for _, q in vals))
     if len(res) < MIN_HIST:
         return None
-    return bias, max(MIN_SD, pstdev(res))
+    return (bias, wt), max(MIN_SD, pstdev(res))
 
 
 def mu_sd(fc: dict, cli: dict, d: date):
     c = calib(fc, cli, d)
     if not c:
         return None
-    bias, sd = c
-    vals = [fc[m][d.isoformat()] + bias[m] for m in bias if d.isoformat() in fc[m]]
-    return (mean(vals), sd) if vals else None
+    (bias, wt), sd = c
+    vals = [(fc[m][d.isoformat()] + bias[m], wt[m]) for m in bias if d.isoformat() in fc[m]]
+    return (sum(v * q for v, q in vals) / sum(q for _, q in vals), sd) if vals else None
 
 
 def quote_at(candles: list, ts: int):
@@ -245,15 +289,14 @@ def rows_for(series: str, blob: dict) -> list:
     out = []
     for e in blob["events"]:
         d = event_date(e["event_ticker"])
-        ms = mu_sd(blob["fc"], blob["cli"], d)
-        if not ms:
-            continue
-        mu, sd = ms
-        for m in e["markets"]:
-            if m.get("result") not in ("yes", "no"):
+        for snap, ts in snapshots(d, tz).items():
+            ms = mu_sd(blob["runs"][snap] if "runs" in blob else blob["fc"], blob["cli"], d)
+            if not ms:
                 continue
-            p = prob(m, mu, sd)
-            for snap, ts in snapshots(d, tz).items():
+            for m in e["markets"]:
+                if m.get("result") not in ("yes", "no"):
+                    continue
+                p = prob(m, *ms)
                 q = quote_at(m.get("candles", []), ts)
                 if q:
                     out.append({"series": series, "event": e["event_ticker"], "date": d.isoformat(), "snap": snap,
@@ -362,11 +405,13 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("fetch")
     f.add_argument("--days", type=int, default=120)
+    r = sub.add_parser("runs")
+    r.add_argument("--days", type=int, default=120)
     sub.add_parser("backtest")
     sc = sub.add_parser("scan")
     sc.add_argument("--thr", type=float, default=0.10)
     a = ap.parse_args()
-    {"fetch": lambda: cmd_fetch(a.days), "backtest": cmd_backtest, "scan": lambda: cmd_scan(a.thr)}[a.cmd]()
+    {"fetch": lambda: cmd_fetch(a.days), "runs": lambda: cmd_runs(a.days), "backtest": cmd_backtest, "scan": lambda: cmd_scan(a.thr)}[a.cmd]()
 
 
 if __name__ == "__main__":
