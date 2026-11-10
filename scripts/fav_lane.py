@@ -19,6 +19,7 @@ import json
 import os
 import random
 import re
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -215,6 +216,12 @@ def report(sms: bool, dry: bool) -> None:
         if sub.get("resolved"):
             print(f"{cat}: {sub['resolved']} resolved, edge {sub['excess']:+.1%}")
     text = report_text(s)
+    try:  # live replay of every lane hit (not just paper fills), next to the history baseline
+        sys.path.insert(0, str(Path(__file__).parent / "edge"))
+        import sms_gate_replay
+        text += "\nAll lane hits, by week\n" + "\n".join(sms_gate_replay.lane_lines())
+    except Exception as e:  # the weekly text must still go out
+        text += f"\n- live replay error {type(e).__name__}"
     print("\n" + text)
     if sms:
         import sms_alerts
