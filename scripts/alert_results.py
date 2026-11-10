@@ -111,8 +111,12 @@ def _hormuz_line() -> str:
 
 
 def _backfill_line() -> str:
-    last = (Path.home() / ".polywatch/history/run.log").read_text().splitlines()[-1]
-    return last[:60]
+    h = Path.home() / ".polywatch/history"
+    if (h / "DONE").exists():  # finished: the one lane with copyable edge, ROI at +2m/+30m
+        l = next(l for l in (h / "eval.txt").read_text().splitlines() if l.startswith("fresh + size"))
+        p = l.split()
+        return f"done, fresh+size {p[p.index('@2m') + 1]} @2m {p[p.index('@30m') + 1]} @30m"
+    return (h / "run.log").read_text().splitlines()[-1][:60]
 
 
 def summary(dry: bool):
