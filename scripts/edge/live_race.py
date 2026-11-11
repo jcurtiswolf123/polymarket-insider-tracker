@@ -14,7 +14,8 @@ OUT = Path.home() / ".polywatch/race"; OUT.mkdir(exist_ok=True)
 SOCCER_Q = re.compile(r"win on 20\d\d|end in a draw|O/U \d", re.I)
 KAL = re.compile(r"^KX(EPL|LALIGA|SERIEA|BUNDESLIGA|LIGUE1|UCL|UEL|UECL|MLS|EREDIVISIE|LIGAMX|LIGAPORTUGAL|WCQ|WC|UNL|SAUDIPL|BRASILEIRAO|ARG|EFLCHAMP|SCOTPREM|CONCACAF|COPA)\w*(GAME|TOTAL)-")
 ESPN = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "usa.1", "uefa.champions", "uefa.europa", "ned.1", "por.1", "mex.1",
-        "fifa.worldq.uefa", "fifa.worldq.conmebol", "fifa.worldq.concacaf", "fifa.worldq.afc", "fifa.worldq.caf", "uefa.nations", "eng.2", "bra.1", "arg.1"]
+        "fifa.worldq.uefa", "fifa.worldq.conmebol", "fifa.worldq.concacaf", "fifa.worldq.afc", "fifa.worldq.caf", "uefa.nations", "eng.2", "bra.1", "arg.1", "fifa.friendly", "esp.copa_del_rey", "uefa.wchampions", "fifa.worldq.ofc"]
+PM_WORDS = set()  # team-name words of the Polymarket games being watched; GOAL API subscribes to those first
 
 
 def log(rec):
@@ -55,6 +56,7 @@ async def polymarket():
             except Exception as e:
                 log({"src": "err", "where": "gamma", "e": repr(e)}); await asyncio.sleep(60); continue
             log({"src": "pm_subscribe", "n": len(toks), "slugs": sorted({v[1] for v in toks.values()})})
+            PM_WORDS.clear(); PM_WORDS.update(w for v in toks.values() for w in re.findall(r"[a-z]{4,}", v[2].lower()) if w not in ("will", "draw", "end"))
             if not toks:
                 await asyncio.sleep(300); continue
             try:
@@ -136,7 +138,8 @@ async def goalapi():
                     await asyncio.sleep(300); continue
                 async with websockets.connect("wss://api.goal-api.com/ws", additional_headers=hdr, ping_interval=20) as ws:
                     await ws.send(json.dumps({"type": "auth", "apiKey": key}))
-                    for mid in list(names)[:25]:  # free plan cap
+                    hit = lambda mid: bool(PM_WORDS & set(re.findall(r"[a-z]{4,}", names[mid].lower())))
+                    for mid in sorted(names, key=lambda m: not hit(m))[:25]:  # free plan cap: Polymarket games first
                         await ws.send(json.dumps({"type": "subscribe", "resource": "match", "matchId": mid}))
                     until = time.time() + 300  # refresh the live list every 5 min (1,000 requests a day)
                     while time.time() < until:
