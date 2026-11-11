@@ -132,8 +132,11 @@ async def goalapi():
             try:
                 live = (await c.get("https://api.goal-api.com/v1/fixtures/live")).json().get("data") or []
                 names = {f["apiId"]: f"{f['homeTeam']['name']} vs {f['awayTeam']['name']}" for f in live}
-                for f in live:
-                    last.setdefault(f["apiId"], (f.get("homeTeamScore"), f.get("awayTeamScore")))
+                for f in live:  # goals missed while disconnected: sync silently so they never log as live goals
+                    sc = (str(f.get("homeTeamScore")), str(f.get("awayTeamScore")))  # REST may send ints, the socket sends strings
+                    if f["apiId"] in last and last[f["apiId"]] != sc:
+                        log({"src": "goalapi_sync", "name": names[f["apiId"]], "score": sc, "prev": last[f["apiId"]]})
+                    last[f["apiId"]] = sc
                 if not live:
                     await asyncio.sleep(300); continue
                 async with websockets.connect("wss://api.goal-api.com/ws", additional_headers=hdr, ping_interval=20) as ws:
@@ -149,7 +152,7 @@ async def goalapi():
                             continue
                         if msg.get("type") != "match_update":
                             continue
-                        d = msg["data"]; mid = str(d.get("match_id")); score = (d.get("match_hometeam_score"), d.get("match_awayteam_score"))
+                        d = msg["data"]; mid = str(d.get("match_id")); score = (str(d.get("match_hometeam_score")), str(d.get("match_awayteam_score")))
                         if mid in last and last[mid] != score:
                             log({"src": "goalapi", "t": msg.get("timestamp", 0) / 1000, "name": names.get(mid, mid), "score": score, "prev": last[mid], "clock": d.get("match_status")})
                         last[mid] = score
