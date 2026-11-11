@@ -56,7 +56,7 @@ for k in keys:
                     stale = abs(px - before) < 0.03
                     if 0.03 < px < 0.97:
                         y = m["prices"][0]
-                        res[(TH, D, stale, "cheap" if px < 0.2 else "mid")].append((m["cid"], t >= CUT, px, y, (y - px) / px - fee(px), fts[k2] - t, k))
+                        res[(TH, D, stale, "cheap" if px < 0.2 else "mid")].append((m["cid"], t >= CUT, px, y, (y - px) / px - fee(px), fts[k2] - t, k, m["cid"], t))
 print(f"{len(keys)} matches, {len(need)} markets\n")
 random.seed(0)
 for TH in (0.10, 0.15, 0.25):
@@ -81,3 +81,5 @@ print("stale cheap Over, trigger .15, +15s: entry fill seconds after trigger: me
       "p75", sorted(x[5] for x in v)[int(len(v) * .75)], "| matches", len({x[6] for x in v}))
 for x in v[:12]:
     print(f"   +{x[5]:>5}s px {x[2]:.3f} {'WON' if x[3] else 'lost'} {x[6]}")
+
+json.dump([{"cid": x[7], "trigger": x[8], "px": x[2], "won": x[3]} for x in res[(0.15, 15, True, "cheap")]], open(H / "stale_over_entries.json", "w"))
