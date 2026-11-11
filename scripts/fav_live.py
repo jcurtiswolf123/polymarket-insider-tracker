@@ -1,0 +1,179 @@
+"""LIVE Kalshi orders for the favorites lane. Real money, approved by Joshua 2026-11-11.
+
+Caps (Joshua, 2026-11-11): $50 per bet, favorites lane only, stop at $500 lost.
+The loss cap is worst case: realized P&L minus everything still open must stay above -$500,
+so even if every open bet loses, total loss stays under $500.
+
+tick:   each new fav_ledger row (a lane signal) matched to a Kalshi game market, bought with an
+        immediate-or-cancel limit at insider price + SLIP (max 0.90). Then settles open bets.
+report: live book.
+Kill switch: touch ~/.polywatch/LIVE_OFF
+
+  uv run --with cryptography --env-file .env python scripts/fav_live.py tick|report [--dry-run]
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import math
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+
+import copy_trader as ct
+import fav_lane
+import kalshi_copy as kc
+import sms_alerts
+
+STAKE = 50.0
+MAX_LOSS = 500.0
+MAX_PRICE = 0.90
+HOME = Path.home() / ".polywatch"
+LEDGER = HOME / "fav_live_ledger.jsonl"
+STATE = HOME / "fav_live_state.json"
+OFF = HOME / "LIVE_OFF"
+CREDS = Path.home() / ".gstack/credentials"
+API = "/trade-api/v2"
+
+
+def _sign(method: str, path: str) -> dict:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    key = serialization.load_pem_private_key((CREDS / "kalshi-privkey.pem").read_bytes(), None)
+    ts = str(int(time.time() * 1000))
+    sig = key.sign((ts + method + API + path.split("?")[0]).encode(),
+                   padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH), hashes.SHA256())
+    return {"KALSHI-ACCESS-KEY": (CREDS / "kalshi-key-id.txt").read_text().strip(),
+            "KALSHI-ACCESS-TIMESTAMP": ts, "KALSHI-ACCESS-SIGNATURE": base64.b64encode(sig).decode(),
+            "Content-Type": "application/json"}
+
+
+def call(method: str, path: str, body: dict | None = None) -> dict:
+    req = urllib.request.Request(kc.K + path, method=method, headers=_sign(method, path),
+                                 data=json.dumps(body).encode() if body else None)
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=20))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"kalshi {e.code}: {e.read().decode()[:200]}") from e
+
+
+def rows() -> list[dict]:
+    return [json.loads(x) for x in LEDGER.read_text().splitlines()] if LEDGER.exists() else []
+
+
+def headroom(rs: list[dict]) -> float:
+    """Dollars that can still be put at risk before the worst case reaches -MAX_LOSS."""
+    realized = sum(r["pnl"] for r in rs if r.get("status") in ("won", "lost"))
+    at_risk = sum(r["cost"] + r["fee"] for r in rs if r.get("status") == "open")
+    return MAX_LOSS + realized - at_risk
+
+
+assert headroom([]) == 500
+assert headroom([{"status": "lost", "pnl": -51.0}, {"status": "open", "cost": 49.0, "fee": 1.0}]) == 399
+
+
+def contracts(price: float) -> int:
+    return int(STAKE // price)
+
+
+def place(r: dict, mk: dict, limit: float, dry: bool) -> dict:
+    n = contracts(limit)
+    order = {"ticker": mk["ticker"], "side": "bid", "count": f"{n}.00", "price": f"{limit:.4f}",
+             "time_in_force": "immediate_or_cancel", "self_trade_prevention_type": "taker_at_cross", "client_order_id": str(uuid.uuid4())}
+    if dry:
+        return {**r, "status": "dry", "order": order}
+    res = call("POST", "/portfolio/events/orders", order)
+    filled = float(res.get("fill_count") or 0)
+    if filled < 1:
+        return {**r, "status": "nofill", "order": order}
+    px = float(res.get("average_fill_price") or limit); fee = float(res.get("average_fee_paid") or 0) * filled
+    return {**r, "status": "open", "order_id": res.get("order_id"), "contracts": filled, "px": px,
+            "cost": round(filled * px, 2), "fee": round(fee, 2)}
+
+
+def tick(dry: bool) -> None:
+    st = json.loads(STATE.read_text()) if STATE.exists() else {}
+    sigs = fav_lane.ledger_rows()
+    if "seen" not in st:  # first run: only signals from now on
+        st["seen"] = len(sigs)
+    new, st["seen"] = sigs[st["seen"]:], len(sigs)
+    rs = rows(); texts = []
+    for s in new:
+        r = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "cond": s["cond"], "outcome": s["outcome"],
+             "title": s.get("title"), "insider_px": s["insider_px"]}
+        try:
+            if OFF.exists():
+                raise ValueError("LIVE_OFF")
+            pm = ct.market_for(s["cond"]) or {}
+            start = pm.get("gameStartTime")
+            if start and datetime.fromisoformat(start.replace(" ", "T").replace("+00", "+00:00")) < datetime.now(UTC):
+                raise ValueError("game started")
+            mk, why = kc.match_kalshi(pm, s["outcome"])
+            if not mk:
+                raise ValueError(why)
+            limit = math.floor(min(s["insider_px"] + fav_lane.SLIP, MAX_PRICE) * 100) / 100
+            r.update(kalshi=mk["ticker"], ask=float(mk.get("yes_ask_dollars") or 0), limit=limit)
+            need = STAKE + kc.kalshi_fee(contracts(limit), limit)
+            if headroom(rs) < need:
+                raise ValueError(f"loss cap: headroom {headroom(rs):.0f}")
+            bal = call("GET", "/portfolio/balance")["balance"] / 100
+            if bal < need:
+                raise ValueError(f"balance ${bal:.2f}")
+            r = place(r, mk, limit, dry)
+        except Exception as e:
+            r.update(status="skip", reason=str(e)[:160])
+        print(r["status"], r.get("kalshi") or r.get("reason"), (r.get("title") or "")[:50], flush=True)
+        if r["status"] == "open":
+            texts.append(f"LIVE BUY {r['outcome']} @{r['px']:.2f} x{r['contracts']:.0f} = ${r['cost']:.0f} ({(r['title'] or '')[:40]})")
+        elif r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance")):
+            texts.append(f"LIVE SKIP {r['outcome']}: {r['reason']}")
+        rs.append(r)
+        if not dry:
+            with LEDGER.open("a") as fh:
+                fh.write(json.dumps(r) + "\n")
+    texts += settle(rs, dry)
+    if texts:
+        print(sms_alerts.send_sms("Kalshi LIVE\n" + "\n".join(texts[:6]) + "\n" + book_line(rows() if not dry else rs), dry))
+    if not dry:
+        STATE.write_text(json.dumps(st))
+
+
+def settle(rs: list[dict], dry: bool) -> list[str]:
+    out = []
+    for r in rs:
+        if r.get("status") != "open":
+            continue
+        mk = kc.get(f"{kc.K}/markets/{r['kalshi']}")["market"]
+        if mk.get("result") not in ("yes", "no"):
+            continue
+        won = mk["result"] == "yes"
+        r.update(status="won" if won else "lost", pnl=round((r["contracts"] if won else 0) - r["cost"] - r["fee"], 2))
+        out.append(f"{'WON' if won else 'LOST'} {r['outcome']} @{r['px']:.2f} {r['pnl']:+.0f}")
+    if out and not dry:
+        LEDGER.write_text("".join(json.dumps(r) + "\n" for r in rs))
+    return out
+
+
+def book_line(rs: list[dict]) -> str:
+    done = [r for r in rs if r.get("status") in ("won", "lost")]
+    w = sum(r["status"] == "won" for r in done)
+    return (f"Live: {w}-{len(done) - w}, {sum(r['pnl'] for r in done):+.0f}, "
+            f"{sum(r.get('status') == 'open' for r in rs)} open, cap left ${headroom(rs):.0f}")
+
+
+def report() -> None:
+    rs = rows()
+    for r in rs:
+        print(r["ts"][:16], r["status"], r.get("kalshi") or r.get("reason"), r.get("px", ""), r.get("pnl", ""), (r.get("title") or "")[:40])
+    print(book_line(rs))
+    print("balance $%.2f" % (call("GET", "/portfolio/balance")["balance"] / 100))
+
+
+if __name__ == "__main__":
+    report() if sys.argv[1:2] == ["report"] else tick("--dry-run" in sys.argv)
