@@ -10,6 +10,7 @@ from statistics import median
 
 rows = [json.loads(l) for f in sorted(glob.glob(str(Path.home() / ".polywatch/race/*.jsonl"))) for l in open(f)]
 goals = [r for r in rows if r["src"] == "espn"]
+ga = [r for r in rows if r["src"] == "goalapi"]
 pm = defaultdict(list); ka = defaultdict(list)
 for r in rows:
     if r["src"] == "pm_trade":
@@ -37,9 +38,11 @@ for g in goals:
     w = words(g["name"] or "")
     near = lambda src: min((t for t, lab in src if g["rt"] - 60 <= t <= g["rt"] + 120 and w & words(lab)), default=None)
     p, k = near(PM), near(KA)
-    res.append((g["name"], g["rt"], p, k))
-    print(f"{g['name'][:40]:40} espn 0s | polymarket {'-' if p is None else f'{p - g['rt']:+.1f}s'} | kalshi {'-' if k is None else f'{k - g['rt']:+.1f}s'}")
-for lab, i in (("polymarket", 2), ("kalshi", 3)):
+    a = min((x["rt"] for x in ga if abs(x["rt"] - g["rt"]) < 180 and w & words(x["name"])), default=None)
+    res.append((g["name"], g["rt"], p, k, a))
+    fmt = lambda v: "-" if v is None else f"{v - g['rt']:+.1f}s"
+    print(f"{g['name'][:40]:40} espn 0s | goalapi {fmt(a)} | polymarket {fmt(p)} | kalshi {fmt(k)}")
+for lab, i in (("polymarket", 2), ("kalshi", 3), ("goalapi", 4)):
     v = [r[i] - r[1] for r in res if r[i] is not None]
     if v:
         print(f"{lab}: moved a median {median(v):+.1f}s vs ESPN ({len(v)} goals)")

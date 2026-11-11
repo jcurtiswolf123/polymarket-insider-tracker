@@ -1,6 +1,6 @@
 """Live goal race: log when Polymarket, Kalshi and ESPN each show a soccer goal, to the millisecond.
   uv run python -I scripts/edge/live_race.py            (launchd com.josh.polywatch-race, KeepAlive)
-Writes ~/.polywatch/race/<UTC date>.jsonl, one JSON per event: src = pm_trade | pm_quote | kalshi | espn,
+Writes ~/.polywatch/race/<UTC date>.jsonl, one JSON per event: src = pm_trade | pm_quote | kalshi | espn | goalapi,
 t = source timestamp (s), rt = local receive time (s). scripts/edge/race_report.py turns it into who-moved-first.
 """
 import asyncio, json, re, time
@@ -119,8 +119,43 @@ async def espn():
             await asyncio.sleep(3)
 
 
+async def goalapi():
+    """GOAL API free plan: live push for up to 25 matches; log every score change with its server timestamp."""
+    kf = Path.home() / ".gstack/credentials/goal-api-key.txt"
+    if not kf.exists():
+        return
+    key = kf.read_text().strip(); hdr = {"Authorization": f"Bearer {key}"}; last = {}
+    async with httpx.AsyncClient(timeout=20, headers=hdr) as c:
+        while True:
+            try:
+                live = (await c.get("https://api.goal-api.com/v1/fixtures/live")).json().get("data") or []
+                names = {f["apiId"]: f"{f['homeTeam']['name']} vs {f['awayTeam']['name']}" for f in live}
+                for f in live:
+                    last.setdefault(f["apiId"], (f.get("homeTeamScore"), f.get("awayTeamScore")))
+                if not live:
+                    await asyncio.sleep(300); continue
+                async with websockets.connect("wss://api.goal-api.com/ws", additional_headers=hdr, ping_interval=20) as ws:
+                    await ws.send(json.dumps({"type": "auth", "apiKey": key}))
+                    for mid in list(names)[:25]:  # free plan cap
+                        await ws.send(json.dumps({"type": "subscribe", "resource": "match", "matchId": mid}))
+                    until = time.time() + 300  # refresh the live list every 5 min (1,000 requests a day)
+                    while time.time() < until:
+                        try:
+                            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+                        except asyncio.TimeoutError:
+                            continue
+                        if msg.get("type") != "match_update":
+                            continue
+                        d = msg["data"]; mid = str(d.get("match_id")); score = (d.get("match_hometeam_score"), d.get("match_awayteam_score"))
+                        if mid in last and last[mid] != score:
+                            log({"src": "goalapi", "t": msg.get("timestamp", 0) / 1000, "name": names.get(mid, mid), "score": score, "prev": last[mid], "clock": d.get("match_status")})
+                        last[mid] = score
+            except Exception as e:
+                log({"src": "err", "where": "goalapi", "e": repr(e)}); await asyncio.sleep(30)
+
+
 async def main():
-    await asyncio.gather(polymarket(), kalshi(), espn())
+    await asyncio.gather(polymarket(), kalshi(), espn(), goalapi())
 
 
 if __name__ == "__main__":
