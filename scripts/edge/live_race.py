@@ -3,7 +3,7 @@
 Writes ~/.polywatch/race/<UTC date>.jsonl, one JSON per event: src = pm_trade | pm_quote | kalshi | espn | goalapi,
 t = source timestamp (s), rt = local receive time (s). scripts/edge/race_report.py turns it into who-moved-first.
 """
-import asyncio, json, re, time
+import asyncio, json, re, time, unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,7 +15,24 @@ SOCCER_Q = re.compile(r"win on 20\d\d|end in a draw|O/U \d", re.I)
 KAL = re.compile(r"^KX(EPL|LALIGA|SERIEA|BUNDESLIGA|LIGUE1|UCL|UEL|UECL|MLS|EREDIVISIE|LIGAMX|LIGAPORTUGAL|WCQ|WC|UNL|SAUDIPL|BRASILEIRAO|ARG|EFLCHAMP|SCOTPREM|CONCACAF|COPA)\w*(GAME|TOTAL)-")
 ESPN = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "usa.1", "uefa.champions", "uefa.europa", "ned.1", "por.1", "mex.1",
         "fifa.worldq.uefa", "fifa.worldq.conmebol", "fifa.worldq.concacaf", "fifa.worldq.afc", "fifa.worldq.caf", "uefa.nations", "eng.2", "bra.1", "arg.1", "fifa.friendly", "esp.copa_del_rey", "uefa.wchampions", "fifa.worldq.ofc"]
-PM_WORDS = set()  # team-name words of the Polymarket games being watched; GOAL API subscribes to those first
+GENERIC = {"will", "draw", "end", "win", "united", "city", "real", "club", "sporting", "athletic", "women", "kvinner", "town", "national"}
+
+
+def team_words(s):
+    """Accent-free 4+ letter words minus generic ones, so Curaçao matches Curacao and United never matches United."""
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return set(re.findall(r"[a-z]{4,}", s)) - GENERIC
+
+
+PM_GAMES = {}  # Polymarket slug -> (kickoff, team words) of games being watched; GOAL API subscribes to those first
+
+
+def pm_slug(kickoff, name):
+    """Polymarket game with the same kickoff (+-20 min) and a shared team word; youth sides need the U-number on both."""
+    w = team_words(name); youth = set(re.findall(r"u\d\d", (name or "").lower()))
+    best = max(((len(w & pw), slug) for slug, (ko, pw, pyouth) in PM_GAMES.items()
+                if abs((ko - kickoff).total_seconds()) <= 1200 and w & pw and youth == pyouth), default=None)
+    return best[1] if best else None  # most shared words wins: Guinea v Eritrea beats Equatorial Guinea v Zimbabwe
 
 
 def log(rec):
@@ -26,7 +43,7 @@ def log(rec):
 
 async def live_tokens(c):
     """Token ids of Polymarket soccer win/draw/O-U markets whose game started in the last 2.5h or starts within 15 min."""
-    now = datetime.now(timezone.utc); toks = {}
+    now = datetime.now(timezone.utc); toks = {}; games = {}
     for off in range(0, 3000, 100):
         r = await c.get("https://gamma-api.polymarket.com/events", params={  # sports events carry the kickoff in endDate
             "tag_slug": "soccer", "closed": "false", "limit": 100, "offset": off,
@@ -41,10 +58,13 @@ async def live_tokens(c):
                     continue
                 gs = datetime.fromisoformat(g.replace(" ", "T").replace("+00", "+00:00") if g.endswith("+00") else g.replace("Z", "+00:00"))
                 if now - timedelta(hours=2.5) <= gs <= now + timedelta(minutes=15):
+                    g0 = games.setdefault(e["slug"], [gs, set(), set()])
+                    g0[1] |= team_words(m["question"]); g0[2] |= set(re.findall(r"u\d\d", m["question"].lower()))
                     for i, tok in enumerate(json.loads(m.get("clobTokenIds") or "[]")):
                         toks[tok] = (m["conditionId"], e["slug"], m["question"][:80], i)
         if len(evs) < 100:
             break
+    PM_GAMES.clear(); PM_GAMES.update({s: tuple(v) for s, v in games.items()})
     return toks
 
 
@@ -56,7 +76,6 @@ async def polymarket():
             except Exception as e:
                 log({"src": "err", "where": "gamma", "e": repr(e)}); await asyncio.sleep(60); continue
             log({"src": "pm_subscribe", "n": len(toks), "slugs": sorted({v[1] for v in toks.values()})})
-            PM_WORDS.clear(); PM_WORDS.update(w for v in toks.values() for w in re.findall(r"[a-z]{4,}", v[2].lower()) if w not in ("will", "draw", "end"))
             if not toks:
                 await asyncio.sleep(300); continue
             try:
@@ -132,6 +151,7 @@ async def goalapi():
             try:
                 live = (await c.get("https://api.goal-api.com/v1/fixtures/live")).json().get("data") or []
                 names = {f["apiId"]: f"{f['homeTeam']['name']} vs {f['awayTeam']['name']}" for f in live}
+                slugs = {f["apiId"]: pm_slug(datetime.fromisoformat(f["kickoffUtc"].replace("Z", "+00:00")), names[f["apiId"]]) if f.get("kickoffUtc") else None for f in live}
                 for f in live:  # goals missed while disconnected: sync silently so they never log as live goals
                     sc = (str(f.get("homeTeamScore")), str(f.get("awayTeamScore")))  # REST may send ints, the socket sends strings
                     if f["apiId"] in last and last[f["apiId"]] != sc:
@@ -141,8 +161,7 @@ async def goalapi():
                     await asyncio.sleep(300); continue
                 async with websockets.connect("wss://api.goal-api.com/ws", additional_headers=hdr, ping_interval=20) as ws:
                     await ws.send(json.dumps({"type": "auth", "apiKey": key}))
-                    hit = lambda mid: bool(PM_WORDS & set(re.findall(r"[a-z]{4,}", names[mid].lower())))
-                    for mid in sorted(names, key=lambda m: not hit(m))[:25]:  # free plan cap: Polymarket games first
+                    for mid in sorted(names, key=lambda m: slugs[m] is None)[:25]:  # free plan cap: Polymarket games first
                         await ws.send(json.dumps({"type": "subscribe", "resource": "match", "matchId": mid}))
                     until = time.time() + 300  # refresh the live list every 5 min (1,000 requests a day)
                     while time.time() < until:
@@ -154,7 +173,7 @@ async def goalapi():
                             continue
                         d = msg["data"]; mid = str(d.get("match_id")); score = (str(d.get("match_hometeam_score")), str(d.get("match_awayteam_score")))
                         if mid in last and last[mid] != score:
-                            log({"src": "goalapi", "t": msg.get("timestamp", 0) / 1000, "name": names.get(mid, mid), "score": score, "prev": last[mid], "clock": d.get("match_status")})
+                            log({"src": "goalapi", "t": msg.get("timestamp", 0) / 1000, "name": names.get(mid, mid), "slug": slugs.get(mid), "score": score, "prev": last[mid], "clock": d.get("match_status")})
                         last[mid] = score
             except Exception as e:
                 log({"src": "err", "where": "goalapi", "e": repr(e)}); await asyncio.sleep(30)

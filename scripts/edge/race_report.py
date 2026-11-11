@@ -1,11 +1,11 @@
 """Who saw each goal first? Reads ~/.polywatch/race/*.jsonl from live_race.py.
   uv run python -I scripts/edge/race_report.py
-Goal = ESPN or GOAL API score change where total goals rise by exactly 1 (drops VAR reversals and catch-up jumps).
+Goal = ESPN or GOAL API (GOAL API rows carry the Polymarket slug matched by kickoff time) score change where total goals rise by exactly 1 (drops VAR reversals and catch-up jumps).
 ESPN and GOAL API reports of the same goal (shared team-name word, within 180s) merge into one goal.
 For each, the first Polymarket quote/trade and first Kalshi trade in that match whose price moved >= 8pt vs 30s
 earlier, within -60..+120s of the goal. All times are local receive time (rt): what we could act on.
 """
-import bisect, glob, json, re
+import bisect, glob, json, re, sys
 from collections import defaultdict
 from pathlib import Path
 from statistics import median
@@ -22,7 +22,10 @@ def one_goal(prev, score):
 assert one_goal(["1", "0"], ["1", "1"]) and not one_goal(["1", "1"], ["2", "2"]) and not one_goal(["1", "0"], ["0", "0"])
 assert not one_goal([None, None], ["1", "0"])
 
-words = lambda s: set(re.findall(r"[a-z]{4,}", (s or "").lower())) - {"will", "game", "match", "draw", "more", "markets", "women"}
+sys.path.insert(0, str(Path(__file__).parent))
+from live_race import team_words
+words = lambda s: team_words(s) - {"game", "match", "more", "markets"}
+assert words("Atlético Nacional") == {"atletico", "nacional"} and words("Manchester United") == {"manchester"}
 
 
 def onsets(series):
@@ -54,16 +57,18 @@ def main():
         counted.add(key); w = words(r["name"])
         g = next((g for g in goals if g["w"] & w and abs(g["t0"] - r["rt"]) < 180 and g[r["src"]] is None), None)
         if g is None:
-            g = {"name": r["name"], "w": w, "t0": r["rt"], "espn": None, "goalapi": None}; goals.append(g)
-        g[r["src"]] = r["rt"]; g["t0"] = min(g["t0"], r["rt"])
+            g = {"name": r["name"], "w": w, "t0": r["rt"], "espn": None, "goalapi": None, "slug": None}; goals.append(g)
+        g[r["src"]] = r["rt"]; g["t0"] = min(g["t0"], r["rt"]); g["slug"] = g["slug"] or r.get("slug")
     dropped = sum(1 for r in rows if r["src"] in ("espn", "goalapi") and not one_goal(r["prev"], r["score"]))
     print(f"goals: {len(goals)} (dropped {dropped} corrections/catch-ups)")
 
     fmt = lambda v, base: "-" if v is None or base is None else f"{v - base:+.1f}s"
     lead = []; kal = []
     for g in goals:
-        near = lambda src: min((t for t, lab in src if g["t0"] - 60 <= t <= g["t0"] + 120 and g["w"] & words(lab)), default=None)
-        p, k = near(PM), near(KA)
+        near = lambda src, same: min((t for t, lab in src if g["t0"] - 60 <= t <= g["t0"] + 120 and same(lab)), default=None)
+        # Polymarket: the slug GOAL API matched by kickoff when there is one, else team words; Kalshi: team words
+        p = near(PM, (lambda lab: lab.endswith(" " + g["slug"])) if g["slug"] else (lambda lab: g["w"] & words(lab)))
+        k = near(KA, lambda lab: g["w"] & words(lab))
         base = g["goalapi"]
         print(f"{g['name'][:38]:38} goalapi 0s | espn {fmt(g['espn'], base)} | polymarket {fmt(p, base)} | kalshi {fmt(k, base)}")
         if base is not None and p is not None:
