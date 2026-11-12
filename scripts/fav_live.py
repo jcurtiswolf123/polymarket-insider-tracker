@@ -1,6 +1,6 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua, 2026-11-11): $150 per bet, favorites + alerts, stop at $1,500 lost (cut from $300/$3,000 after the 14-day split).
+Caps (Joshua, 2026-11-11): $200 per bet, favorites + alerts, stop at $1,500 lost (cut from $300/$3,000 after the 14-day split).
 The loss cap is worst case: realized P&L minus everything still open must stay above -$1,500,
 so even if every open bet loses, total loss stays under $1,500.
 
@@ -31,7 +31,7 @@ import fav_lane
 import kalshi_copy as kc
 import sms_alerts
 
-STAKE = 150.0
+STAKE = 200.0
 MAX_LOSS = 1500.0
 MAX_PRICE = 0.90
 HOME = Path.home() / ".polywatch"
@@ -178,19 +178,15 @@ def tick(dry: bool) -> None:
         except Exception as e:
             r.update(status="skip", reason=str(e)[:160])
         print(r["status"], r.get("kalshi") or r.get("reason"), (r.get("title") or "")[:50], flush=True)
-        if r["status"] == "open":
-            texts.append(buy_text(r))
-        elif r["status"] == "nofill":
-            texts.append(f"MISSED {r['outcome']}\n- Kalshi above {r['limit']:.2f}\n- insider {r['insider_px']:.2f}\n- {(r['title'] or '')[:40]}")
-        elif r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance", "kalshi 4")):
-            texts.append(f"SKIP {r['outcome']}\n- {r['reason'][:80]}")
+        if r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance", "kalshi 4")):  # only problems that stop betting
+            texts.append(f"BOT STOPPED: {r['reason'][:60]}")
         rs.append(r)
         if not dry:
             with LEDGER.open("a") as fh:
                 fh.write(json.dumps(r) + "\n")
     texts += settle(rs, dry)
     if texts:
-        print(sms_alerts.send_sms("Kalshi LIVE\n" + "\n\n".join(texts[:4]) + "\n\n" + status_text(rows() if not dry else rs), dry))
+        print(sms_alerts.send_sms("Kalshi\n" + "\n".join(texts[:6]) + "\n" + balance_line(), dry))
     if not dry:
         STATE.write_text(json.dumps(st))
 
@@ -205,32 +201,18 @@ def settle(rs: list[dict], dry: bool) -> list[str]:
             continue
         won = mk["result"] == "yes"
         r.update(status="won" if won else "lost", pnl=round((r["contracts"] if won else 0) - r["cost"] - r["fee"], 2))
-        out.append(f"{'WON' if won else 'LOST'} {r['outcome']} {r['pnl']:+.0f}\n- {(r['title'] or '')[:40]}\n"
-                   f"- {r['contracts']:.0f} @{r['px']:.2f}, cost ${r['cost'] + r['fee']:.0f}" + (f", paid ${r['contracts']:.0f}" if won else ""))
+        out.append(f"{'WON' if won else 'LOST'} {r['outcome']} {'+' if won else '-'}${abs(r['pnl']):,.0f}")
     if out and not dry:
         LEDGER.write_text("".join(json.dumps(r) + "\n" for r in rs))
     return out
 
 
-def buy_text(r: dict) -> str:
-    n, c = r["contracts"], r["cost"] + r["fee"]
-    who = f"insider ${r['insider_usdc']:,.0f} @{r['insider_px']:.2f}" if r.get("insider_usdc") else f"insider @{r['insider_px']:.2f}"
-    return (f"BUY {r['outcome']} to win\n- {(r['title'] or '')[:40]}\n- {n:.0f} @{r['px']:.2f} = ${c:.0f} w/ fee\n"
-            f"- win pays ${n:.0f} (+${n - c:.0f})\n- {'favorites' if r['src'] == 'fav' else 'alert'}, {who}")
-
-
-def status_text(rs: list[dict]) -> str:
-    done = [r for r in rs if r.get("status") in ("won", "lost")]
-    w = sum(r["status"] == "won" for r in done)
-    op = [r for r in rs if r.get("status") == "open"]
+def balance_line() -> str:
     try:
         b = call("GET", "/portfolio/balance")
-        cash, total = b["balance"] / 100, (b["balance"] + (b.get("portfolio_value") or 0)) / 100
-        money = f"- cash ${cash:,.0f}, total ${total:,.0f}"
+        return f"Balance ${(b['balance'] + (b.get('portfolio_value') or 0)) / 100:,.0f}"
     except Exception:
-        money = "- balance unavailable"
-    return (f"Book {w}-{len(done) - w}, {sum(r['pnl'] for r in done):+.0f}\n- {len(op)} open, ${sum(r['cost'] + r['fee'] for r in op):,.0f} at risk\n"
-            f"{money}\n- cap left ${headroom(rs):,.0f}")
+        return "Balance unavailable"
 
 
 def book_line(rs: list[dict]) -> str:
