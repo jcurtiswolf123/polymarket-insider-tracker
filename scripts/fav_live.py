@@ -200,6 +200,8 @@ def tick(dry: bool) -> None:
         print(r["status"], r.get("kalshi") or r.get("reason"), (r.get("title") or "")[:50], flush=True)
         if r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance", "kalshi 4")):  # only problems that stop betting
             texts.append(f"BOT STOPPED: {r['reason'][:60]}")
+        if r["status"] == "open":
+            texts.append(f"BUY {r['outcome']} {r['contracts']:.0f} @{r['px']:.2f} ${r['cost']:,.0f} ({(r.get('title') or '')[:40]})")
         rs.append(r)
         if not dry:
             with LEDGER.open("a") as fh:

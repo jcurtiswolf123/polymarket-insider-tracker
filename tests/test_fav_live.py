@@ -60,7 +60,8 @@ def test_buys_then_dedupes_game_then_settles_and_texts(bot):
     (r,) = ledger()
     assert r["status"] == "open" and r["kalshi"] == T and r["limit"] == 0.64
     assert bot["orders"][0]["count"] == "312.00" and bot["orders"][0]["price"] == "0.6400"
-    assert r["cost"] == round(312 * 0.62, 2) and bot["texts"] == []  # no buy text
+    assert r["cost"] == round(312 * 0.62, 2)
+    assert bot["texts"] == ["Kalshi\nBUY Boston Celtics 312 @0.62 $193 (Celtics vs. Knicks)\nBalance $2,400"]
 
     bot["fav"].append(sig())  # same game again: no second order
     fl.tick(False)
