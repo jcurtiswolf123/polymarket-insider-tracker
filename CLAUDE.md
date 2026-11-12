@@ -6,6 +6,8 @@
 - DB: `docker exec -i polymarket-postgres psql -U tracker -d polymarket_tracker`
 - CLI: `~/.claude/bin/polywatch help`
 
+**Runs on Fly (since 2026-11-11):** app `polywatch-bot` (sjc, volume /data, HOME=/data): tracker + Postgres + Redis + sms_alerts, fav_lane, kalshi_copy, fav_live, learner, alert_results. Mac plists moved to `~/Library/LaunchAgents/moved-to-fly-2026-11-11/`; never reload them while Fly runs (double bets). Deploy: `flyctl deploy . --config deploy/fly/fly.toml --dockerfile deploy/fly/Dockerfile --app polywatch-bot --ha=false`. Shell: `flyctl ssh console --app polywatch-bot`. Kill: `touch /data/.polywatch/LIVE_OFF` on Fly.
+
 **Paper lanes (live only where marked; real money needs Joshua's explicit "live" + caps)**
 - alert book: `scripts/alert_results.py` (every 30m), nightly text `--summary` at 21:00
 - Kalshi mirror: `scripts/kalshi_copy.py report` (every 2m)

@@ -17,3 +17,14 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 *.log*
+tracker.db
+.gstack/
+.claude/
+.agents/
+.hypothesis/
+.specify/
+tests/
+docs/
+specs/
+quality/
+typings/
