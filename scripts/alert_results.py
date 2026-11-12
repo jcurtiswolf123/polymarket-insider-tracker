@@ -3,7 +3,7 @@
 uv run --env-file .env python scripts/alert_results.py [--dry-run]
 shortcut: fill assumed at the flagged wallet's price, real fills are worse; fine for a paper week.
 """
-import json, os, shutil, subprocess, sys, urllib.request
+import json, os, re, shutil, subprocess, sys, urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -34,7 +34,7 @@ def alerts():
         if len(f) == 4 and f[2].startswith("0x") and f[2] not in seen:
             seen.add(f[2])
             w, cid = f[2].split("|", 1) if "|" in f[2] else ("", f[2])
-            yield f[0], w, cid
+            yield f[0], w, cid, f[3]
 
 
 def market(cid: str) -> dict:
@@ -42,10 +42,24 @@ def market(cid: str) -> dict:
     return json.load(urllib.request.urlopen(req, timeout=20))
 
 
-def settle(ts, w, cid):
+def settle(ts, w, cid, body=""):
     """Returns (key, won, pnl, label) for a resolved alert, else None."""
     if not all(c in "0123456789abcdefx" for c in (w + cid).lower()):
         return None  # ids go into SQL; refuse anything that is not hex
+    # The text names the side and price; trust it first. The nearest flagged DB row can be another
+    # wallet's later SELL (USC 11-11 graded LOST from a 0.999 sell after the game).
+    mt = re.search(r"bought (.+?) @([0-9.]+)", body)
+    if mt:
+        m = market(cid); toks = m.get("tokens", [])
+        tok = next((t for t in toks if t.get("outcome") == mt.group(1).strip()), None)
+        if tok:
+            if not any(t.get("winner") for t in toks):
+                return None
+            p = float(mt.group(2))
+            if not 0 < p < 1:
+                return None
+            won = bool(tok["winner"]); pnl = STAKE * (1 / p - 1) if won else -STAKE
+            return f"{w}|{cid}", won, pnl, f"{'WON' if won else 'LOST'} {tok['outcome']} @{p:.2f} {pnl:+.0f} ({m.get('question', '')[:40]})"
     wq = f"and wallet_address ilike '{w}'" if w else ""
     row = sql(f"select asset_id, side, price from risk_assessments where market_id='{cid}' and should_alert {wq} "
               f"order by abs(extract(epoch from created_at - '{ts}-08'::timestamptz)) limit 1").strip("\n")
@@ -68,12 +82,12 @@ def settle(ts, w, cid):
 def main(dry: bool):
     state = json.loads(STATE.read_text()) if STATE.exists() else {"done": {}}
     new = []
-    for ts, w, cid in alerts():
+    for ts, w, cid, body in alerts():
         key = f"{w}|{cid}"
         if key in state["done"]:
             continue
         try:
-            s = settle(ts, w, cid)
+            s = settle(ts, w, cid, body)
         except Exception as e:  # one bad market must not stop the rest
             print("skip", cid[:12], e)
             continue
