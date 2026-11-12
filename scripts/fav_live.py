@@ -56,12 +56,16 @@ def _sign(method: str, path: str) -> dict:
 
 
 def call(method: str, path: str, body: dict | None = None) -> dict:
-    req = urllib.request.Request(kc.K + path, method=method, headers=_sign(method, path),
-                                 data=json.dumps(body).encode() if body else None)
-    try:
-        return json.load(urllib.request.urlopen(req, timeout=20))
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"kalshi {e.code}: {e.read().decode()[:200]}") from e
+    for i in range(4):  # 429: back off and retry (same client_order_id/client_transfer_id, so no double order)
+        req = urllib.request.Request(kc.K + path, method=method, headers=_sign(method, path),
+                                     data=json.dumps(body).encode() if body else None)
+        try:
+            return json.load(urllib.request.urlopen(req, timeout=20))
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and i < 3:
+                time.sleep(2 * (i + 1))
+                continue
+            raise RuntimeError(f"kalshi {e.code}: {e.read().decode()[:200]}") from e
 
 
 def rows() -> list[dict]:
