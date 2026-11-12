@@ -104,8 +104,30 @@ def contracts(price: float) -> int:
     return int(STAKE // price)
 
 
+def fund_shard(ticker: str, need: float, dry: bool) -> None:
+    """Kalshi shards collateral by market group (NBA/tennis = 3) and API orders are not auto-funded: move the shortfall in."""
+    shard = int(kc.get(f"{kc.K}/markets/{ticker}")["market"].get("exchange_index") or 0)
+    bal = {int(b["exchange_index"]): float(b["balance"]) for b in call("GET", "/portfolio/balance")["balance_breakdown"]}
+    short = need - bal.get(shard, 0.0)
+    if short <= 0 or dry:
+        return
+    src = max((i for i in bal if i != shard), key=bal.get)
+    call("POST", "/portfolio/intra_exchange_instance_transfer",
+         {"source": "event_contract", "destination": "event_contract", "amount": math.ceil(min(short, bal[src]) * 10000),
+          "source_exchange_shard": src, "destination_exchange_shard": shard, "client_transfer_id": str(uuid.uuid4())})
+    for _ in range(8):  # transfer is async; balance endpoint rate-limits fast polling
+        time.sleep(3)
+        try:
+            b = {int(x["exchange_index"]): float(x["balance"]) for x in call("GET", "/portfolio/balance")["balance_breakdown"]}
+        except RuntimeError:
+            continue
+        if b.get(shard, 0.0) >= min(need, bal.get(shard, 0.0) + bal[src]) - 0.01:
+            return
+
+
 def place(r: dict, mk: dict, limit: float, dry: bool) -> dict:
     n = contracts(limit)
+    fund_shard(mk["ticker"], STAKE + kc.kalshi_fee(n, limit), dry)
     order = {"ticker": mk["ticker"], "side": "bid", "count": f"{n}.00", "price": f"{limit:.4f}",
              "time_in_force": "immediate_or_cancel", "self_trade_prevention_type": "taker_at_cross", "client_order_id": str(uuid.uuid4())}
     if dry:
