@@ -36,7 +36,7 @@ while true; do
   job 50 scripts/fav_lane.py tick
   [ $((n % 2)) -eq 0 ] && job 100 scripts/kalshi_copy.py tick
   job 120 scripts/fav_live.py tick
-  [ $((n % 30)) -eq 0 ] && { job 900 scripts/learner.py & job 600 scripts/alert_results.py & }
+  [ $((n % 30)) -eq 0 ] && { nice -n 15 bash -c "$(declare -f job); job 900 scripts/learner.py; job 600 scripts/alert_results.py" & }
   [ "$(date +%H:%M)" = "21:00" ] && job 300 scripts/alert_results.py --summary &
   n=$((n + 1)); sleep 30
 done

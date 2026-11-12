@@ -24,7 +24,6 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import alert_card
 import fav_lane
 
 HOME = Path.home() / ".polywatch"
@@ -60,6 +59,8 @@ def send_sms(body: str, dry: bool) -> str:
 
 
 def main() -> None:
+    import alert_card  # heavy (sklearn); send_sms callers skip it
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--test", help="send this text and exit")

@@ -129,6 +129,19 @@ def fund_shard(ticker: str, need: float, dry: bool) -> None:
             return
 
 
+def recover(order: dict) -> dict | None:
+    """The order as Kalshi recorded it, in the POST response's shape; None if Kalshi never got it."""
+    o = next((o for o in call("GET", f"/portfolio/orders?ticker={order['ticker']}&limit=100")["orders"]
+              if o.get("client_order_id") == order["client_order_id"]), None)
+    if o is None:
+        return None
+    n = float(o["fill_count_fp"])
+    cost = float(o["taker_fill_cost_dollars"]) + float(o["maker_fill_cost_dollars"])
+    fee = float(o["taker_fees_dollars"]) + float(o["maker_fees_dollars"])
+    return {"order_id": o["order_id"], "fill_count": n, "average_fill_price": cost / n if n else None,
+            "average_fee_paid": fee / n if n else 0}
+
+
 def place(r: dict, mk: dict, limit: float, dry: bool) -> dict:
     n = contracts(limit)
     fund_shard(mk["ticker"], STAKE + kc.kalshi_fee(n, limit), dry)
@@ -136,7 +149,13 @@ def place(r: dict, mk: dict, limit: float, dry: bool) -> dict:
              "time_in_force": "immediate_or_cancel", "self_trade_prevention_type": "taker_at_cross", "client_order_id": str(uuid.uuid4())}
     if dry:
         return {**r, "status": "dry", "order": order}
-    res = call("POST", "/portfolio/events/orders", order)
+    try:
+        res = call("POST", "/portfolio/events/orders", order)
+    except Exception:  # timeout or 5xx can still fill: look the order up by client_order_id before calling it a skip
+        time.sleep(3)
+        res = recover(order)
+        if res is None:
+            raise
     filled = float(res.get("fill_count") or 0)
     if filled < 1:
         return {**r, "status": "nofill", "order": order}
@@ -196,7 +215,11 @@ def settle(rs: list[dict], dry: bool) -> list[str]:
     for r in rs:
         if r.get("status") != "open":
             continue
-        mk = kc.get(f"{kc.K}/markets/{r['kalshi']}")["market"]
+        try:
+            mk = kc.get(f"{kc.K}/markets/{r['kalshi']}")["market"]
+        except Exception as e:  # one bad lookup must not block the other settlements
+            print("settle", r["kalshi"], e, flush=True)
+            continue
         if mk.get("result") not in ("yes", "no"):
             continue
         won = mk["result"] == "yes"

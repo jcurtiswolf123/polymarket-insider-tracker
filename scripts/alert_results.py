@@ -3,7 +3,7 @@
 uv run --env-file .env python scripts/alert_results.py [--dry-run]
 shortcut: fill assumed at the flagged wallet's price, real fills are worse; fine for a paper week.
 """
-import json, subprocess, sys, urllib.request
+import json, os, shutil, subprocess, sys, urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -15,8 +15,13 @@ STATE = HOME / "alert_results_state.json"
 
 
 def sql(q: str) -> str:
-    r = subprocess.run(["docker", "exec", "-i", "polymarket-postgres", "psql", "-U", "tracker", "-d",
-                        "polymarket_tracker", "-At", "-F", "\t", "-c", q], capture_output=True, text=True)
+    env = os.environ
+    # Mac: Postgres in docker. Fly: Postgres local, psql on PATH.
+    pre = (["docker", "exec", "-i", "polymarket-postgres", "psql"] if shutil.which("docker")
+           else ["psql", "-h", env.get("POSTGRES_HOST", "localhost")])
+    r = subprocess.run(pre + ["-U", env.get("POSTGRES_USER", "tracker"), "-d", env.get("POSTGRES_DB", "polymarket_tracker"),
+                              "-At", "-F", "\t", "-c", q], capture_output=True, text=True,
+                       env={**env, "PGPASSWORD": env.get("POSTGRES_PASSWORD", "")})
     if r.returncode:
         raise SystemExit(r.stderr)
     return r.stdout
