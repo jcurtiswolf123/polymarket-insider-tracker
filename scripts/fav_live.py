@@ -1,6 +1,6 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua, 2026-11-11): $200 per bet, favorites + alerts, stop at $1,000 worst-case loss (cut from $300/$3,000 after the 14-day split).
+Caps (Joshua, 2026-11-11): $200 per bet, alerts only since 11-12 (lane alone backtested -3%), stop at $1,000 worst-case loss (cut from $300/$3,000 after the 14-day split).
 The loss cap is worst case: realized P&L minus everything still open must stay above -$1,000,
 so even if every open bet loses, total loss stays under $1,000.
 
@@ -34,6 +34,7 @@ import sms_alerts
 STAKE = 200.0
 MAX_LOSS = 1000.0
 MAX_PRICE = 0.90
+LANE_BETS = False  # 11-12: lane alone backtested -3% on 463 mkts; bet only model-confirmed alerts
 HOME = Path.home() / ".polywatch"
 LEDGER = HOME / "fav_live_ledger.jsonl"
 STATE = HOME / "fav_live_state.json"
@@ -95,7 +96,7 @@ def signals(st: dict) -> list[dict]:
     fav = fav_lane.ledger_rows()
     al = kc.rows()
     st.setdefault("seen", len(fav)); st.setdefault("alerts_seen", len(al))
-    out = [{"src": "fav", "cond": s["cond"], "outcome": s["outcome"], "title": s.get("title"), "insider_px": s["insider_px"], "usdc": s.get("usdc")}
+    out = [] if not LANE_BETS else [{"src": "fav", "cond": s["cond"], "outcome": s["outcome"], "title": s.get("title"), "insider_px": s["insider_px"], "usdc": s.get("usdc")}
            for s in fav[st["seen"]:]]
     out += [{"src": "alert", "cond": a["key"].split("|")[-1], "outcome": a.get("outcome"), "title": a.get("title"),
              "insider_px": a.get("leader_px") or a["ask"], "kalshi": a["kalshi"], "ask": a["ask"]}

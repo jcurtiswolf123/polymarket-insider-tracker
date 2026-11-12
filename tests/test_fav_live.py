@@ -25,6 +25,7 @@ def bot(tmp_path, monkeypatch):
     monkeypatch.setattr(fl.kc, "get", lambda url: {"market": {"exchange_index": 3, "result": w["result"]}})
     monkeypatch.setattr(fl.sms_alerts, "send_sms", lambda body, dry: w["texts"].append(body) or "SMfake")
     monkeypatch.setattr(fl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fl, "LANE_BETS", True)
 
     def call(method, path, body=None):
         if path == "/portfolio/balance":
@@ -100,3 +101,10 @@ def test_alert_signal_uses_matched_ticker_and_price_cap(bot):
                       "leader_px": 0.88, "kalshi": T, "ask": 0.87}]
     fl.tick(False)
     assert ledger()[-1]["limit"] == 0.90 and bot["orders"][0]["count"] == "222.00"
+
+
+def test_lane_rows_ignored_when_alerts_only(bot, monkeypatch):
+    monkeypatch.setattr(fl, "LANE_BETS", False)
+    bot["fav"] = [sig()]
+    fl.tick(False)
+    assert ledger() == [] and bot["orders"] == [] and json.loads(fl.STATE.read_text())["seen"] == 1
