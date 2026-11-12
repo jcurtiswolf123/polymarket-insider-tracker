@@ -38,5 +38,8 @@ while true; do
   job 120 scripts/fav_live.py tick
   [ $((n % 30)) -eq 0 ] && { nice -n 15 bash -c "$(declare -f job); job 900 scripts/learner.py; job 600 scripts/alert_results.py" & }
   [ "$(date +%H:%M)" = "21:00" ] && job 300 scripts/alert_results.py --summary &
+  # shortcut: tracker leaks ~1GB/h and got OOM-killed at 3.3GB; recycle it cleanly before that until the leak is found
+  rss=$(ps -eo rss=,args= | awk '/-m polymarket_insider_tracker/ && !/awk/ {print $1; exit}')
+  [ "${rss:-0}" -gt 2200000 ] && pkill -f -- "-m polymarket_insider_tracker" && echo "$(date) tracker rss ${rss}k, recycled" >> /data/.polywatch/tracker.log
   n=$((n + 1)); sleep 30
 done
