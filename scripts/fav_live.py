@@ -34,7 +34,7 @@ import sms_alerts
 STAKE = 200.0
 MAX_LOSS = 1000.0
 MAX_PRICE = 0.90
-LANE_BETS = True  # 11-12 Joshua: bet the full favorites lane (31-5 live) plus alerts; False = alerts only
+LANE_BETS = False  # 11-12 off: fresh-wallet sports favorites won 69.3% at 69.7% price over 1,575 markets (Jul-Nov), no edge; True = bet lane too
 HOME = Path.home() / ".polywatch"
 LEDGER = HOME / "fav_live_ledger.jsonl"
 STATE = HOME / "fav_live_state.json"
