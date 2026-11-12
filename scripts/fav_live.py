@@ -1,11 +1,12 @@
-"""LIVE Kalshi orders for the favorites lane. Real money, approved by Joshua 2026-11-11.
+"""LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua, 2026-11-11): $50 per bet, favorites lane only, stop at $500 lost.
-The loss cap is worst case: realized P&L minus everything still open must stay above -$500,
-so even if every open bet loses, total loss stays under $500.
+Caps (Joshua, 2026-11-11, raised same day): $300 per bet, favorites + alerts, stop at $3,000 lost.
+The loss cap is worst case: realized P&L minus everything still open must stay above -$3,000,
+so even if every open bet loses, total loss stays under $3,000.
 
-tick:   each new fav_ledger row (a lane signal) matched to a Kalshi game market, bought with an
-        immediate-or-cancel limit at insider price + SLIP (max 0.90). Then settles open bets.
+tick:   each new fav_ledger row (lane signal) and each new kalshi_copy_ledger "open" row (alert already
+        matched to Kalshi) bought with an immediate-or-cancel limit at insider price + SLIP (max 0.90).
+        One bet per Kalshi game: a second signal on either side of the same game is skipped. Then settles.
 report: live book.
 Kill switch: touch ~/.polywatch/LIVE_OFF
 
@@ -30,8 +31,8 @@ import fav_lane
 import kalshi_copy as kc
 import sms_alerts
 
-STAKE = 50.0
-MAX_LOSS = 500.0
+STAKE = 300.0
+MAX_LOSS = 3000.0
 MAX_PRICE = 0.90
 HOME = Path.home() / ".polywatch"
 LEDGER = HOME / "fav_live_ledger.jsonl"
@@ -74,8 +75,29 @@ def headroom(rs: list[dict]) -> float:
     return MAX_LOSS + realized - at_risk
 
 
-assert headroom([]) == 500
-assert headroom([{"status": "lost", "pnl": -51.0}, {"status": "open", "cost": 49.0, "fee": 1.0}]) == 399
+assert headroom([]) == 3000
+assert headroom([{"status": "lost", "pnl": -51.0}, {"status": "open", "cost": 49.0, "fee": 1.0}]) == 2899
+
+
+def game(ticker: str) -> str:
+    return ticker.rsplit("-", 1)[0]
+
+
+assert game("KXNBAGAME-26NOV11BOSTOR-BOS") == game("KXNBAGAME-26NOV11BOSTOR-TOR")
+
+
+def signals(st: dict) -> list[dict]:
+    """New signals from both books; first run of each book starts at its tail."""
+    fav = fav_lane.ledger_rows()
+    al = kc.rows()
+    st.setdefault("seen", len(fav)); st.setdefault("alerts_seen", len(al))
+    out = [{"src": "fav", "cond": s["cond"], "outcome": s["outcome"], "title": s.get("title"), "insider_px": s["insider_px"]}
+           for s in fav[st["seen"]:]]
+    out += [{"src": "alert", "cond": a["key"].split("|")[-1], "outcome": a.get("outcome"), "title": a.get("title"),
+             "insider_px": a.get("leader_px") or a["ask"], "kalshi": a["kalshi"], "ask": a["ask"]}
+            for a in al[st["alerts_seen"]:] if a.get("status") == "open"]
+    st["seen"], st["alerts_seen"] = len(fav), len(al)
+    return out
 
 
 def contracts(price: float) -> int:
@@ -99,13 +121,9 @@ def place(r: dict, mk: dict, limit: float, dry: bool) -> dict:
 
 def tick(dry: bool) -> None:
     st = json.loads(STATE.read_text()) if STATE.exists() else {}
-    sigs = fav_lane.ledger_rows()
-    if "seen" not in st:  # first run: only signals from now on
-        st["seen"] = len(sigs)
-    new, st["seen"] = sigs[st["seen"]:], len(sigs)
     rs = rows(); texts = []
-    for s in new:
-        r = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "cond": s["cond"], "outcome": s["outcome"],
+    for s in signals(st):
+        r = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "src": s["src"], "cond": s["cond"], "outcome": s["outcome"],
              "title": s.get("title"), "insider_px": s["insider_px"]}
         try:
             if OFF.exists():
@@ -114,9 +132,14 @@ def tick(dry: bool) -> None:
             start = pm.get("gameStartTime")
             if start and datetime.fromisoformat(start.replace(" ", "T").replace("+00", "+00:00")) < datetime.now(UTC):
                 raise ValueError("game started")
-            mk, why = kc.match_kalshi(pm, s["outcome"])
-            if not mk:
-                raise ValueError(why)
+            if s.get("kalshi"):  # alert book already matched it
+                mk = {"ticker": s["kalshi"], "yes_ask_dollars": s["ask"]}
+            else:
+                mk, why = kc.match_kalshi(pm, s["outcome"])
+                if not mk:
+                    raise ValueError(why)
+            if any(game(x.get("kalshi") or "") == game(mk["ticker"]) and x.get("status") in ("open", "won", "lost") for x in rs):
+                raise ValueError("already bet this game")
             limit = math.floor(min(s["insider_px"] + fav_lane.SLIP, MAX_PRICE) * 100) / 100
             r.update(kalshi=mk["ticker"], ask=float(mk.get("yes_ask_dollars") or 0), limit=limit)
             need = STAKE + kc.kalshi_fee(contracts(limit), limit)
@@ -131,7 +154,7 @@ def tick(dry: bool) -> None:
         print(r["status"], r.get("kalshi") or r.get("reason"), (r.get("title") or "")[:50], flush=True)
         if r["status"] == "open":
             texts.append(f"LIVE BUY {r['outcome']} @{r['px']:.2f} x{r['contracts']:.0f} = ${r['cost']:.0f} ({(r['title'] or '')[:40]})")
-        elif r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance")):
+        elif r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance", "kalshi 403")):
             texts.append(f"LIVE SKIP {r['outcome']}: {r['reason']}")
         rs.append(r)
         if not dry:
