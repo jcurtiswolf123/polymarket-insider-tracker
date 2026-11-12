@@ -144,6 +144,11 @@ def tick(dry: bool):
         row = {"ts": ts, "key": key, "outcome": outcome, "leader_px": lpx}
         try:
             pms = get(f"https://gamma-api.polymarket.com/markets?condition_ids={cid}")
+            if not pms:  # one empty reply must not drop a live alert; closed markets only show with closed=true
+                time.sleep(3)
+                pms = get(f"https://gamma-api.polymarket.com/markets?condition_ids={cid}")
+                if not pms and get(f"https://gamma-api.polymarket.com/markets?condition_ids={cid}&closed=true"):
+                    raise ValueError("market closed")
             if not pms:
                 raise ValueError("polymarket market not found")
             pm = pms[0]
