@@ -10,7 +10,7 @@
 - alert book: `scripts/alert_results.py` (every 30m), nightly text `--summary` at 21:00
 - Kalshi mirror: `scripts/kalshi_copy.py report` (every 2m)
 - favorites: `scripts/fav_lane.py report` (every 1m), $200/bet; Sunday 09:00 text adds every live lane hit by week via `scripts/edge/sms_gate_replay.py` (forward test, call at 200 resolved)
-- LIVE Kalshi favorites + alerts: `scripts/fav_live.py tick|report` (launchd fav-live, 1m), $200/bet, one bet per game, stops at $1,500 worst-case loss, kill: `touch ~/.polywatch/LIVE_OFF`; run with `uv run --with cryptography`
+- LIVE Kalshi favorites + alerts: `scripts/fav_live.py tick|report` (launchd fav-live, 1m), $200/bet, one bet per game, stops at $1,000 worst-case loss, kill: `touch ~/.polywatch/LIVE_OFF`; run with `uv run --with cryptography`
 - learner: `scripts/learner.py --report`
 - research desk: `scripts/edge/research_desk.py report|grade|run -n 20` (06:15, claude -p, Sonnet)
 - hormuz: `scripts/edge/hormuz.py status` (07:05)

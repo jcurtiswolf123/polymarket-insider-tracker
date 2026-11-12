@@ -1,8 +1,8 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua, 2026-11-11): $200 per bet, favorites + alerts, stop at $1,500 lost (cut from $300/$3,000 after the 14-day split).
-The loss cap is worst case: realized P&L minus everything still open must stay above -$1,500,
-so even if every open bet loses, total loss stays under $1,500.
+Caps (Joshua, 2026-11-11): $200 per bet, favorites + alerts, stop at $1,000 worst-case loss (cut from $300/$3,000 after the 14-day split).
+The loss cap is worst case: realized P&L minus everything still open must stay above -$1,000,
+so even if every open bet loses, total loss stays under $1,000.
 
 tick:   each new fav_ledger row (lane signal) and each new kalshi_copy_ledger "open" row (alert already
         matched to Kalshi) bought with an immediate-or-cancel limit at insider price + SLIP (max 0.90).
@@ -32,7 +32,7 @@ import kalshi_copy as kc
 import sms_alerts
 
 STAKE = 200.0
-MAX_LOSS = 1500.0
+MAX_LOSS = 1000.0
 MAX_PRICE = 0.90
 HOME = Path.home() / ".polywatch"
 LEDGER = HOME / "fav_live_ledger.jsonl"
@@ -79,8 +79,8 @@ def headroom(rs: list[dict]) -> float:
     return MAX_LOSS + realized - at_risk
 
 
-assert headroom([]) == 1500
-assert headroom([{"status": "lost", "pnl": -51.0}, {"status": "open", "cost": 49.0, "fee": 1.0}]) == 1399
+assert headroom([]) == 1000
+assert headroom([{"status": "lost", "pnl": -51.0}, {"status": "open", "cost": 49.0, "fee": 1.0}]) == 899
 
 
 def game(ticker: str) -> str:
