@@ -1,6 +1,6 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua, 2026-11-11): $200 per bet, alerts only since 11-12 (lane alone backtested -3%), stop at $1,000 worst-case loss (cut from $300/$3,000 after the 14-day split).
+Caps (Joshua, 2026-11-11): $200 per bet, favorites lane + alerts (lane off then back on 11-12 by Joshua), stop at $1,000 worst-case loss (cut from $300/$3,000 after the 14-day split).
 The loss cap is worst case: realized P&L minus everything still open must stay above -$1,000,
 so even if every open bet loses, total loss stays under $1,000.
 
@@ -34,7 +34,7 @@ import sms_alerts
 STAKE = 200.0
 MAX_LOSS = 1000.0
 MAX_PRICE = 0.90
-LANE_BETS = False  # 11-12: lane alone backtested -3% on 463 mkts; bet only model-confirmed alerts
+LANE_BETS = True  # 11-12 Joshua: bet the full favorites lane (31-5 live) plus alerts; False = alerts only
 HOME = Path.home() / ".polywatch"
 LEDGER = HOME / "fav_live_ledger.jsonl"
 STATE = HOME / "fav_live_state.json"
