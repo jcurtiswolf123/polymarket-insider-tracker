@@ -7,7 +7,7 @@ Worth a text: a hit in the favorites lane (scripts/fav_lane.py: fresh wallet, 0.
 resolves within 7 days) with a positive bet and the price still under the card's max price.
 Never: the same market twice in 24h, or more than SMS_DAILY_CAP texts a day.
 
-Env: SMS_TO (default +16462752111), SMS_FROM (default +18053087751), SMS_DAILY_CAP (8),
+Env: SMS_TO (default +16462752111), SMS_FROM (default +18053087751), SMS_DAILY_CAP (30),
      SMS_BANKROLL (1000), SMS_MAX_BET_PCT (0.05).
 Each text carries win chance, bet size and a details link built by scripts/alert_card.py. Twilio creds from ~/.gstack/credentials.
   uv run --env-file .env python scripts/sms_alerts.py [--dry-run] [--test "message"]
@@ -92,7 +92,7 @@ def main() -> None:
     now = time.time()
     day = time.strftime("%F")
     state["sent"] = {k: v for k, v in state["sent"].items() if now - v < 86400}
-    cap = int(env_f("SMS_DAILY_CAP", "8"))
+    cap = int(env_f("SMS_DAILY_CAP", "30"))  # 8 dropped Spurs (W), Sonego (L), a BTC (W) on 11-10/11; alerts feed the live bets
     for line in lines:
         try:
             hit = json.loads(line)
