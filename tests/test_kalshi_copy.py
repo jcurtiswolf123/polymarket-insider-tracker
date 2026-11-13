@@ -30,3 +30,26 @@ def test_name_fallback(monkeypatch):
     pm = {"sportsMarketType": "moneyline", "slug": "lol-bilibili-geng-2026-11-14", "outcomes": '["Bilibili Gaming", "Gen.G"]'}
     mk, how = match_kalshi(pm, "Gen.G")
     assert mk["ticker"].endswith("-GEN") and how == "name"
+
+
+def test_total_over_matches_line(monkeypatch):
+    ev = {"event_ticker": "KXNBATOTAL-26NOV11GSWHOU", "markets": [
+        {"ticker": "KXNBATOTAL-26NOV11GSWHOU-205", "floor_strike": 204.5},
+        {"ticker": "KXNBATOTAL-26NOV11GSWHOU-207", "floor_strike": 206.5}]}
+    monkeypatch.setattr(kalshi_copy, "events", lambda s, st: [ev] if s == "KXNBATOTAL" else [])
+    pm = {"sportsMarketType": "totals", "slug": "nba-gsw-hou-2026-11-11-total-206pt5", "line": 206.5, "outcomes": '["Over", "Under"]'}
+    assert match_kalshi(pm, "Over")[0]["ticker"].endswith("-207")
+    assert match_kalshi(pm, "Under")[0] is None
+    assert match_kalshi({**pm, "line": 210.5}, "Over")[0] is None
+
+
+def test_map_winner_by_name(monkeypatch):
+    ev = {"event_ticker": "KXCS2MAP-26NOV110200LGCFUR-1", "markets": [
+        {"ticker": "KXCS2MAP-26NOV110200LGCFUR-1-LGC", "yes_sub_title": "Legacy"},
+        {"ticker": "KXCS2MAP-26NOV110200LGCFUR-1-FUR", "yes_sub_title": "FURIA"}]}
+    ev2 = {**ev, "event_ticker": "KXCS2MAP-26NOV110200LGCFUR-2"}
+    monkeypatch.setattr(kalshi_copy, "events", lambda s, st: [ev2, ev] if s == "KXCS2MAP" else [])
+    pm = {"sportsMarketType": "child_moneyline", "slug": "cs2-lgc-furia-2026-11-10-game1", "outcomes": '["Legacy", "FURIA"]'}
+    mk, how = match_kalshi(pm, "FURIA")
+    assert mk["ticker"] == "KXCS2MAP-26NOV110200LGCFUR-1-FUR" and how == "map"
+    assert match_kalshi({**pm, "slug": "cs2-lgc-furia-2026-11-10-game3"}, "FURIA")[0] is None

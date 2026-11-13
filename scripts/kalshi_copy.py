@@ -3,7 +3,7 @@ matching Kalshi game market at Kalshi's live ask, $200 a bet, Kalshi taker fee i
 Settled bets are texted with the running book.
 
 uv run --env-file .env python scripts/kalshi_copy.py tick [--dry-run] | report
-shortcut: moneyline game markets only (no spreads, totals, futures); add series to LEAGUES to widen.
+shortcut: game winners, game totals (Over only) and esports map winners; no spreads or futures. Add series to LEAGUES to widen.
 Paper only: this file never places an order.
 """
 import json, math, re, sys, time, urllib.request
@@ -70,8 +70,55 @@ def near_dates(date: str) -> list[str]:
     return [(d + timedelta(days=k)).strftime("%y%b%d").upper() for k in (0, -1, 1)]
 
 
+def match_total(pm: dict, outcome: str, status: str):
+    """Over on a game total: nba-gsw-hou-2026-11-11-total-206pt5 -> KXNBATOTAL-26NOV11GSWHOU-207 (Over 206.5).
+    shortcut: Over only (Under needs a No order) and team-code match only; add both when alerts show them."""
+    if outcome != "Over" or pm.get("line") is None:
+        return None, "total: Over only"
+    s = parse_slug(re.sub(r"-total-.*$", "", pm.get("slug", "")))
+    if not s or "GAME" not in LEAGUES.get(s[0], ""):
+        return None, "total: no Kalshi series"
+    lg, a, b, date = s
+    for ev in events(LEAGUES[lg].replace("GAME", "TOTAL"), status):
+        tail = ev["event_ticker"].split("-", 1)[-1]
+        if tail.startswith(date) and a in tail and b in tail:
+            mk = next((m for m in ev.get("markets", []) if m.get("floor_strike") == float(pm["line"])), None)
+            if mk:
+                return mk, "total"
+            return None, f"total: no Kalshi line {pm['line']}"
+    return None, f"total: no Kalshi event {lg} {date} {a}/{b}"
+
+
+def match_map(pm: dict, outcome: str, status: str):
+    """Esports map winner: cs2-lgc-furia-2026-11-10-game1 -> KXCS2MAP-26NOV110200LGCFUR-1, team by name."""
+    m = re.fullmatch(r"(.+)-game(\d+)", pm.get("slug", ""))
+    s = parse_slug(m.group(1)) if m else None
+    if not s or "GAME" not in LEAGUES.get(s[0], ""):
+        return None, "map: no Kalshi series"
+    outs = json.loads(pm.get("outcomes") or "[]")
+    if outcome not in outs or len(outs) != 2:
+        return None, "outcome not in 2-way market"
+    other = outs[1 - outs.index(outcome)]
+    evs = events(LEAGUES[s[0]].replace("GAME", "MAP"), status)
+    for d in near_dates(s[3]):
+        for ev in evs:
+            tail = ev["event_ticker"].split("-", 1)[-1]
+            if not (tail.startswith(d) and tail.endswith("-" + m.group(2))):
+                continue
+            mks = ev.get("markets", [])
+            mine = [x for x in mks if same_team(x.get("yes_sub_title"), outcome)]
+            theirs = [x for x in mks if same_team(x.get("yes_sub_title"), other)]
+            if len(mine) == 1 and theirs and mine[0] not in theirs:
+                return mine[0], "map"
+    return None, f"map: no Kalshi event {s[0]} {s[3]} game{m.group(2)}"
+
+
 def match_kalshi(pm: dict, outcome: str, status: str = "open"):
     """(Kalshi market, how) for the picked team, or (None, reason). Code match first, team-name match second."""
+    if pm.get("sportsMarketType") == "totals":
+        return match_total(pm, outcome, status)
+    if pm.get("sportsMarketType") == "child_moneyline":
+        return match_map(pm, outcome, status)
     if pm.get("sportsMarketType") != "moneyline":
         return None, f"not moneyline ({pm.get('sportsMarketType')})"
     s = parse_slug(pm.get("slug", ""))
