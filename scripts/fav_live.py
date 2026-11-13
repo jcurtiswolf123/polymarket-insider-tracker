@@ -1,6 +1,6 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua, 2026-11-11): $200 per bet, favorites lane + alerts (lane off then back on 11-12 by Joshua), stop at $1,000 worst-case loss (cut from $300/$3,000 after the 14-day split).
+Caps (Joshua, 2026-11-11): $200 per bet, stop at $1,000 worst-case loss. Alerts only since 11-12 (LANE_BETS).
 The loss cap is worst case: realized P&L minus everything still open must stay above -$1,000,
 so even if every open bet loses, total loss stays under $1,000.
 

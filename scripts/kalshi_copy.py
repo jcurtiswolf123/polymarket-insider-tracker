@@ -1,6 +1,6 @@
 """Paper copy lane: every Polymarket SMS alert on a game winner market is mirrored on the
 matching Kalshi game market at Kalshi's live ask, $200 a bet, Kalshi taker fee included.
-Settled bets are texted with the running book.
+Its open rows feed fav_live (real money); settlements are logged, not texted.
 
 uv run --env-file .env python scripts/kalshi_copy.py tick [--dry-run] | report
 shortcut: game winners, game totals (Over only) and esports map winners; no spreads or futures. Add series to LEAGUES to widen.
@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-import sms_alerts
 
 STAKE = 200.0
 MAX_CHASE = 0.05  # skip if Kalshi ask is this much worse than the leader's price
@@ -251,8 +250,8 @@ def settle(state: dict, dry: bool):
         new.append(f"{'WON' if won else 'LOST'} {r['kalshi'].split('-')[-1]} @{r['ask']:.2f} {r['pnl']:+.0f} ({(r.get('title') or '')[:30]})")
     if changed and not dry:
         LEDGER.write_text("".join(json.dumps(r) + "\n" for r in rs))
-    if new:
-        print(sms_alerts.send_sms("Kalshi copy (paper)\n" + "\n".join(new[:6]) + "\n" + book_line(rs), dry))
+    if new:  # no text: fav_live texts the real bets on these same alerts
+        print("\n".join(new) + "\n" + book_line(rs))
 
 
 def book_line(rs) -> str:
