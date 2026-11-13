@@ -99,14 +99,14 @@ def main() -> None:
         except ValueError:
             continue
         key = str(hit.get("market"))  # one text per market a day, however many wallets pile in
-        if key in state["sent"] or not fav_lane.prefilter(hit):
+        if key in state["sent"] or not (fav_lane.prefilter(hit) or fav_lane.game_hit(hit)):
             continue
         if state["days"].get(day, 0) >= cap:
             break
         try:
             rec = alert_card.recommend(hit)
-            if not fav_lane.in_lane(hit, rec["market"]):
-                continue  # outside the favorites lane
+            if not (fav_lane.in_lane(hit, rec["market"]) or fav_lane.game_hit(hit)):
+                continue  # outside both gates
             now_px = alert_card._now_price(rec["market"], hit.get("outcome") or "")
             if rec["bet_usd"] <= 0 or (now_px is not None and now_px > rec["max_price"]):
                 continue  # no edge left at the price you can get now

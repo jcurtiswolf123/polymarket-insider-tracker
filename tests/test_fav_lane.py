@@ -54,3 +54,14 @@ def test_summarize():
     assert (s["signals"], s["missed"], s["open"], s["resolved"]) == (4, 1, 1, 2)
     assert s["win_rate"] == 0.5 and abs(s["pnl"] - (80 - 100)) < 1e-9
     assert "too early" in fav_lane.report_text(s)
+
+
+def test_game_hit_takes_old_wallets_and_model_only_hits():
+    from fav_lane import game_hit, prefilter
+    navi = {"price": 0.58, "usdc": 11600, "age_h": 5472, "hours_to_start": 0.5, "rules": ["M1_model_edge"]}
+    assert game_hit(navi) and not prefilter(navi)
+    assert not game_hit({**navi, "price": 0.27})          # DK handicap loss
+    assert not game_hit({**navi, "hours_to_start": None})  # not a game
+    assert not game_hit({**navi, "hours_to_start": 30})
+    assert not game_hit({**navi, "usdc": 500})
+    assert not game_hit({**navi, "rules": []})
