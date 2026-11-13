@@ -69,21 +69,6 @@ def hours_to_end(market: dict | None, now: float) -> float | None:
         return None
 
 
-GAME_MIN, GAME_MAX, GAME_START_H = 0.30, 0.85, 24.0
-
-
-def game_hit(hit: dict) -> bool:
-    """Second SMS gate (Joshua 11-12): the pre-11-07 gate on games. Any wallet age, model-only (M1) hits
-    count, game starts within 24h. It sent Bilibili, BetBoom, NaVi (3-0 on Kalshi); the 0.30 floor drops the
-    0.27 DK loss. The card's bet > 0 check still applies."""
-    try:
-        h, px, usdc = hit.get("hours_to_start"), float(hit.get("price") or 0), float(hit.get("usdc") or 0)
-    except (TypeError, ValueError):
-        return False
-    return (h is not None and 0 < float(h) <= GAME_START_H and GAME_MIN <= px < GAME_MAX
-            and usdc >= MIN_USDC and bool(_rules(hit)))
-
-
 def in_lane(hit: dict, market: dict | None, now: float | None = None) -> bool:
     h = hours_to_end(market, now or time.time())
     return prefilter(hit) and h is not None and 0 < h <= MAX_HOURS_TO_END
