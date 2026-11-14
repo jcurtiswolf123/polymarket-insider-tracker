@@ -92,17 +92,24 @@ assert game("KXNBAGAME-26NOV11BOSTOR-BOS") == game("KXNBAGAME-26NOV11BOSTOR-TOR"
 
 
 def signals(st: dict) -> list[dict]:
-    """New signals from both books; first run of each book starts at its tail."""
+    """New lane rows (first run starts at the tail), plus every unsettled matched alert not yet tried live.
+    kalshi_copy keeps one row per market and dedupes repeat alerts, so a new-rows-only read missed
+    re-alerted markets (Gen.G alerted 3x 11-10..11-13, never bet)."""
     fav = fav_lane.ledger_rows()
-    al = kc.rows()
-    st.setdefault("seen", len(fav)); st.setdefault("alerts_seen", len(al))
+    st.setdefault("seen", len(fav))
     out = [] if not LANE_BETS else [{"src": "fav", "cond": s["cond"], "outcome": s["outcome"], "title": s.get("title"), "insider_px": s["insider_px"], "usdc": s.get("usdc")}
            for s in fav[st["seen"]:]]
+    tried = {r.get("cond") for r in rows() if r.get("src") == "alert"}
     out += [{"src": "alert", "cond": a["key"].split("|")[-1], "outcome": a.get("outcome"), "title": a.get("title"),
              "insider_px": a.get("leader_px") or a["ask"], "kalshi": a["kalshi"], "ask": a["ask"]}
-            for a in al[st["alerts_seen"]:] if a.get("status") == "open"]
-    st["seen"], st["alerts_seen"] = len(fav), len(al)
+            for a in kc.rows() if a.get("status") == "open" and a["key"].split("|")[-1] not in tried]
+    st["seen"] = len(fav)
     return out
+
+
+def cash(b: dict) -> float:
+    """Kalshi now returns balance_dollars; the cents field is the fallback."""
+    return float(b["balance_dollars"]) if b.get("balance_dollars") is not None else b["balance"] / 100
 
 
 def contracts(price: float) -> int:
@@ -191,7 +198,7 @@ def tick(dry: bool) -> None:
             need = STAKE + kc.kalshi_fee(contracts(limit), limit)
             if headroom(rs) < need:
                 raise ValueError(f"loss cap: headroom {headroom(rs):.0f}")
-            bal = call("GET", "/portfolio/balance")["balance"] / 100
+            bal = cash(call("GET", "/portfolio/balance"))
             if bal < need:
                 raise ValueError(f"balance ${bal:.2f}")
             r = place(r, mk, limit, dry)
@@ -236,7 +243,7 @@ def settle(rs: list[dict], dry: bool) -> list[str]:
 def balance_line() -> str:
     try:
         b = call("GET", "/portfolio/balance")
-        return f"Balance ${(b['balance'] + (b.get('portfolio_value') or 0)) / 100:,.0f}"
+        return f"Balance ${cash(b) + (b.get('portfolio_value') or 0) / 100:,.0f}"
     except Exception:
         return "Balance unavailable"
 
@@ -253,7 +260,7 @@ def report() -> None:
     for r in rs:
         print(r["ts"][:16], r["status"], r.get("kalshi") or r.get("reason"), r.get("px", ""), r.get("pnl", ""), (r.get("title") or "")[:40])
     print(book_line(rs))
-    print("balance $%.2f" % (call("GET", "/portfolio/balance")["balance"] / 100))
+    print("balance $%.2f" % cash(call("GET", "/portfolio/balance")))
 
 
 if __name__ == "__main__":

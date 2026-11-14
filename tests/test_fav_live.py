@@ -109,3 +109,16 @@ def test_lane_rows_ignored_when_alerts_only(bot, monkeypatch):
     bot["fav"] = [sig()]
     fl.tick(False)
     assert ledger() == [] and bot["orders"] == [] and json.loads(fl.STATE.read_text())["seen"] == 1
+
+
+def test_alert_open_before_this_run_is_bet_once(bot):
+    # kalshi_copy dedupes repeat alerts, so an old open row must still reach live, exactly once
+    bot["alerts"] = [{"key": "0xold", "status": "open", "outcome": "Gen.G", "title": "LoL", "leader_px": 0.62,
+                      "kalshi": "KXLOLGAME-26NOV141400GENBLG-GEN", "ask": 0.63}]
+    fl.tick(False); fl.tick(False)
+    assert len(bot["orders"]) == 1 and [r["cond"] for r in ledger()] == ["0xold"]
+
+
+def test_cash_prefers_balance_dollars():
+    assert fl.cash({"balance": 15, "balance_dollars": "2486.5279"}) == 2486.5279
+    assert fl.cash({"balance": 248652}) == 2486.52
