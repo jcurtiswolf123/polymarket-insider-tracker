@@ -122,3 +122,22 @@ def test_alert_open_before_this_run_is_bet_once(bot):
 def test_cash_prefers_balance_dollars():
     assert fl.cash({"balance": 15, "balance_dollars": "2486.5279"}) == 2486.5279
     assert fl.cash({"balance": 248652}) == 2486.52
+
+
+def test_balance_skip_retries_after_funding_and_texts_once(bot, monkeypatch):
+    bot["alerts"] = [{"key": "0xusc", "status": "open", "outcome": "USC Trojans", "title": "USC", "leader_px": 0.76,
+                      "kalshi": "KXNCAAMBGAME-26NOV11USCCAL-USC", "ask": 0.75}]
+    real = fl.call
+    broke = {"on": True}
+
+    def call(method, path, body=None):
+        if path == "/portfolio/balance" and broke["on"]:
+            return {"balance": 15, "balance_dollars": "0.15", "portfolio_value": 0, "balance_breakdown": []}
+        return real(method, path, body)
+
+    monkeypatch.setattr(fl, "call", call)
+    fl.tick(False); fl.tick(False)
+    assert bot["orders"] == [] and len(ledger()) == 1 and sum("BOT STOPPED" in t for t in bot["texts"]) == 1
+    broke["on"] = False
+    fl.tick(False); fl.tick(False)
+    assert len(bot["orders"]) == 1 and [r["status"] for r in ledger()] == ["skip", "open"]
