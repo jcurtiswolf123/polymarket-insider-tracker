@@ -92,26 +92,18 @@ assert game("KXNBAGAME-26NOV11BOSTOR-BOS") == game("KXNBAGAME-26NOV11BOSTOR-TOR"
 
 
 def signals(st: dict) -> list[dict]:
-    """New lane rows (first run starts at the tail), plus every unsettled matched alert not yet tried live.
-    kalshi_copy keeps one row per market and dedupes repeat alerts, so a new-rows-only read missed
-    re-alerted markets (Gen.G alerted 3x 11-10..11-13, never bet)."""
+    """New signals from both books; first run of each book starts at its tail.
+    Old open alerts are not bet: the 11-14 rule that bet them lost Gen.G at a 4-day-old price."""
     fav = fav_lane.ledger_rows()
-    st.setdefault("seen", len(fav))
+    al = kc.rows()
+    st.setdefault("seen", len(fav)); st.setdefault("alerts_seen", len(al))
     out = [] if not LANE_BETS else [{"src": "fav", "cond": s["cond"], "outcome": s["outcome"], "title": s.get("title"), "insider_px": s["insider_px"], "usdc": s.get("usdc")}
            for s in fav[st["seen"]:]]
-    tried = {r.get("cond") for r in rows() if r.get("src") == "alert" and not retryable(r)}
     out += [{"src": "alert", "cond": a["key"].split("|")[-1], "outcome": a.get("outcome"), "title": a.get("title"),
              "insider_px": a.get("leader_px") or a["ask"], "kalshi": a["kalshi"], "ask": a["ask"]}
-            for a in kc.rows() if a.get("status") == "open" and a["key"].split("|")[-1] not in tried]
-    st["seen"] = len(fav)
+            for a in al[st["alerts_seen"]:] if a.get("status") == "open"]
+    st["seen"], st["alerts_seen"] = len(fav), len(al)
     return out
-
-
-RETRY = ("balance", "loss cap")  # skips that clear once money is added; retried each tick until the game starts
-
-
-def retryable(r: dict) -> bool:
-    return r.get("status") == "skip" and (r.get("reason") or "").startswith(RETRY)
 
 
 def cash(b: dict) -> float:
@@ -212,8 +204,6 @@ def tick(dry: bool) -> None:
         except Exception as e:
             r.update(status="skip", reason=str(e)[:160])
         print(r["status"], r.get("kalshi") or r.get("reason"), (r.get("title") or "")[:50], flush=True)
-        if retryable(r) and any(retryable(x) and x.get("cond") == r["cond"] for x in rs):
-            continue  # same stuck alert as last tick: already texted and logged
         if r["status"] == "skip" and r["reason"].startswith(("loss cap", "balance", "kalshi 4")):  # only problems that stop betting
             texts.append(f"BOT STOPPED: {r['reason'][:60]}")
         if r["status"] == "open":

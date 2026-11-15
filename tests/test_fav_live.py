@@ -111,33 +111,14 @@ def test_lane_rows_ignored_when_alerts_only(bot, monkeypatch):
     assert ledger() == [] and bot["orders"] == [] and json.loads(fl.STATE.read_text())["seen"] == 1
 
 
-def test_alert_open_before_this_run_is_bet_once(bot):
-    # kalshi_copy dedupes repeat alerts, so an old open row must still reach live, exactly once
+def test_alert_open_before_this_run_is_not_bet(bot):
     bot["alerts"] = [{"key": "0xold", "status": "open", "outcome": "Gen.G", "title": "LoL", "leader_px": 0.62,
                       "kalshi": "KXLOLGAME-26NOV141400GENBLG-GEN", "ask": 0.63}]
-    fl.tick(False); fl.tick(False)
-    assert len(bot["orders"]) == 1 and [r["cond"] for r in ledger()] == ["0xold"]
+    fl.STATE.write_text(json.dumps({"seen": 0, "alerts_seen": 1}))  # alert already seen by an earlier tick
+    fl.tick(False)
+    assert bot["orders"] == []
 
 
 def test_cash_prefers_balance_dollars():
     assert fl.cash({"balance": 15, "balance_dollars": "2486.5279"}) == 2486.5279
     assert fl.cash({"balance": 248652}) == 2486.52
-
-
-def test_balance_skip_retries_after_funding_and_texts_once(bot, monkeypatch):
-    bot["alerts"] = [{"key": "0xusc", "status": "open", "outcome": "USC Trojans", "title": "USC", "leader_px": 0.76,
-                      "kalshi": "KXNCAAMBGAME-26NOV11USCCAL-USC", "ask": 0.75}]
-    real = fl.call
-    broke = {"on": True}
-
-    def call(method, path, body=None):
-        if path == "/portfolio/balance" and broke["on"]:
-            return {"balance": 15, "balance_dollars": "0.15", "portfolio_value": 0, "balance_breakdown": []}
-        return real(method, path, body)
-
-    monkeypatch.setattr(fl, "call", call)
-    fl.tick(False); fl.tick(False)
-    assert bot["orders"] == [] and len(ledger()) == 1 and sum("BOT STOPPED" in t for t in bot["texts"]) == 1
-    broke["on"] = False
-    fl.tick(False); fl.tick(False)
-    assert len(bot["orders"]) == 1 and [r["status"] for r in ledger()] == ["skip", "open"]
