@@ -16,6 +16,7 @@ T = "KXNBAGAME-26NOV20BOSNYK-BOS"
 def bot(tmp_path, monkeypatch):
     for k, v in {"LEDGER": tmp_path / "l.jsonl", "STATE": tmp_path / "s.json", "OFF": tmp_path / "OFF"}.items():
         monkeypatch.setattr(fl, k, v)
+    monkeypatch.setattr(fl, "STAKE", 150.0); monkeypatch.setattr(fl, "MIN_PRICE", 0.0)  # sizing tests below assume these
     fl.STATE.write_text(json.dumps({"seen": 0, "alerts_seen": 0}))
     w = {"fav": [], "alerts": [], "texts": [], "orders": [], "result": None, "post": "fill"}
     monkeypatch.setattr(fl.fav_lane, "ledger_rows", lambda: w["fav"])
@@ -72,6 +73,14 @@ def test_buys_then_dedupes_game_then_settles_and_texts(bot):
     won = ledger()[0]
     assert won["status"] == "won" and won["pnl"] == round(234 - won["cost"] - won["fee"], 2)
     assert bot["texts"] and bot["texts"][-1].startswith("Kalshi\nWON Boston Celtics +$") and "Balance $2,400" in bot["texts"][-1]
+
+
+def test_price_under_floor_is_skipped(bot, monkeypatch):
+    monkeypatch.setattr(fl, "MIN_PRICE", 0.70)
+    bot["fav"] = [sig(px=0.69)]
+    fl.tick(False)
+    (r,) = ledger()
+    assert r["status"] == "skip" and r["reason"].startswith("price 0.69") and not bot["orders"]
 
 
 def test_timeout_that_filled_is_recovered_not_skipped(bot):

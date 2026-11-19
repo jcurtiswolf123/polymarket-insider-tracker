@@ -1,6 +1,6 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua): $150 per bet from 2026-11-18 ($200 before), stop at $1,000 worst-case loss. Alerts only since 11-12 (LANE_BETS).
+Caps (Joshua): $25 per bet, price 0.70+ only, from 2026-11-18 ($200 before), stop at $1,000 worst-case loss. Alerts only since 11-12 (LANE_BETS).
 The loss cap is worst case: realized P&L minus everything still open must stay above -$1,000,
 so even if every open bet loses, total loss stays under $1,000.
 
@@ -31,7 +31,8 @@ import fav_lane
 import kalshi_copy as kc
 import sms_alerts
 
-STAKE = 150.0
+STAKE = 25.0  # Joshua 11-18: small bets only ($200 to 11-18, $150 briefly)
+MIN_PRICE = 0.70  # Joshua 11-18: only 70%+ favorites
 MAX_LOSS = 1000.0
 MAX_PRICE = 0.90
 LANE_BETS = False  # 11-12 off: fresh-wallet sports favorites won 69.3% at 69.7% price over 1,575 markets (Jul-Nov), no edge; True = bet lane too
@@ -180,6 +181,8 @@ def tick(dry: bool) -> None:
         try:
             if OFF.exists():
                 raise ValueError("LIVE_OFF")
+            if s["insider_px"] < MIN_PRICE:
+                raise ValueError(f"price {s['insider_px']:.2f} under {MIN_PRICE}")
             pm = ct.market_for(s["cond"]) or {}
             start = pm.get("gameStartTime")
             if start and datetime.fromisoformat(start.replace(" ", "T").replace("+00", "+00:00")) < datetime.now(UTC):
