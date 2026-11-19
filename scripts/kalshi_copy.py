@@ -132,9 +132,9 @@ def match_kalshi(pm: dict, outcome: str, status: str = "open"):
         return None, "outcome not in 2-way market"
     i = outs.index(outcome); code, other = (a, b)[i], outs[1 - i]
     evs = events(series, status)
-    for ev in evs:  # 1) same team codes and date, as in nba-ind-dal-2026-11-09 vs KXNBAGAME-26NOV09INDDAL
+    for ev in evs:  # 1) same team codes, date +-1 (Polymarket slugs use UTC, Kalshi ET: nfl-lac-bal-2026-11-17 is KXNFLGAME-26NOV16LACBAL)
         tail = ev["event_ticker"].split("-", 1)[-1]
-        if tail.startswith(date) and a in tail and b in tail:
+        if any(tail.startswith(d) for d in near_dates(date)) and a in tail and b in tail:
             mk = next((m for m in ev.get("markets", []) if m["ticker"].endswith("-" + code)), None)
             if mk:
                 return mk, "code"

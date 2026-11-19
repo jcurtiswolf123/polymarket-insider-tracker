@@ -32,6 +32,16 @@ def test_name_fallback(monkeypatch):
     assert mk["ticker"].endswith("-GEN") and how == "name"
 
 
+def test_code_match_utc_vs_et_date(monkeypatch):
+    ev = {"event_ticker": "KXNFLGAME-26NOV16LACBAL", "markets": [
+        {"ticker": "KXNFLGAME-26NOV16LACBAL-LAC", "yes_sub_title": "Los Angeles C"},
+        {"ticker": "KXNFLGAME-26NOV16LACBAL-BAL", "yes_sub_title": "Baltimore"}]}
+    monkeypatch.setattr(kalshi_copy, "events", lambda s, st: [ev])
+    pm = {"sportsMarketType": "moneyline", "slug": "nfl-lac-bal-2026-11-17", "outcomes": '["Chargers", "Ravens"]'}
+    mk, how = match_kalshi(pm, "Ravens")
+    assert mk["ticker"].endswith("-BAL") and how == "code"
+
+
 def test_total_over_matches_line(monkeypatch):
     ev = {"event_ticker": "KXNBATOTAL-26NOV11GSWHOU", "markets": [
         {"ticker": "KXNBATOTAL-26NOV11GSWHOU-205", "floor_strike": 204.5},
