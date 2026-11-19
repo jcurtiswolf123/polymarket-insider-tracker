@@ -1,6 +1,6 @@
 """LIVE Kalshi orders for the favorites lane and the SMS alert book. Real money, approved by Joshua 2026-11-11.
 
-Caps (Joshua): $25 per bet, price 0.70+ only, from 2026-11-18 ($200 before), stop at $1,000 worst-case loss. Alerts only since 11-12 (LANE_BETS).
+Caps (Joshua): $150 per bet, price 0.70+ only, from 2026-11-18 ($200 before), stop at $1,000 worst-case loss. Alerts only since 11-12 (LANE_BETS).
 The loss cap is worst case: realized P&L minus everything still open must stay above -$1,000,
 so even if every open bet loses, total loss stays under $1,000.
 
@@ -31,7 +31,7 @@ import fav_lane
 import kalshi_copy as kc
 import sms_alerts
 
-STAKE = 25.0  # Joshua 11-18: small bets only ($200 to 11-18, $150 briefly)
+STAKE = 150.0  # Joshua 11-18 ($200 before; $25 briefly)
 MIN_PRICE = 0.70  # Joshua 11-18: only 70%+ favorites
 MAX_LOSS = 1000.0
 MAX_PRICE = 0.90
