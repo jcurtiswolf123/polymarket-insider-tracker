@@ -37,8 +37,8 @@ def bot(tmp_path, monkeypatch):
             return {"order_id": "o1", "fill_count": body["count"], "average_fill_price": "0.62", "average_fee_paid": "0.0164"}
         if path.startswith("/portfolio/orders"):
             o = w["orders"][-1]
-            return {"orders": [{"client_order_id": o["client_order_id"], "order_id": "o2", "fill_count_fp": "312.00",
-                                "taker_fill_cost_dollars": "193.44", "maker_fill_cost_dollars": "0",
+            return {"orders": [{"client_order_id": o["client_order_id"], "order_id": "o2", "fill_count_fp": "234.00",
+                                "taker_fill_cost_dollars": "145.08", "maker_fill_cost_dollars": "0",
                                 "taker_fees_dollars": "5.10", "maker_fees_dollars": "0"}]}
         raise AssertionError(path)
 
@@ -59,9 +59,9 @@ def test_buys_then_dedupes_game_then_settles_and_texts(bot):
     fl.tick(False)
     (r,) = ledger()
     assert r["status"] == "open" and r["kalshi"] == T and r["limit"] == 0.64
-    assert bot["orders"][0]["count"] == "312.00" and bot["orders"][0]["price"] == "0.6400"
-    assert r["cost"] == round(312 * 0.62, 2)
-    assert bot["texts"] == ["Kalshi\nBUY Boston Celtics 312 @0.62 $193 (Celtics vs. Knicks)\nBalance $2,400"]
+    assert bot["orders"][0]["count"] == "234.00" and bot["orders"][0]["price"] == "0.6400"
+    assert r["cost"] == round(234 * 0.62, 2)
+    assert bot["texts"] == ["Kalshi\nBUY Boston Celtics 234 @0.62 $145 (Celtics vs. Knicks)\nBalance $2,400"]
 
     bot["fav"].append(sig())  # same game again: no second order
     fl.tick(False)
@@ -70,7 +70,7 @@ def test_buys_then_dedupes_game_then_settles_and_texts(bot):
     bot["result"] = "yes"
     fl.tick(False)
     won = ledger()[0]
-    assert won["status"] == "won" and won["pnl"] == round(312 - won["cost"] - won["fee"], 2)
+    assert won["status"] == "won" and won["pnl"] == round(234 - won["cost"] - won["fee"], 2)
     assert bot["texts"] and bot["texts"][-1].startswith("Kalshi\nWON Boston Celtics +$") and "Balance $2,400" in bot["texts"][-1]
 
 
@@ -79,7 +79,7 @@ def test_timeout_that_filled_is_recovered_not_skipped(bot):
     bot["fav"] = [sig()]
     fl.tick(False)
     (r,) = ledger()
-    assert r["status"] == "open" and r["contracts"] == 312 and r["px"] == pytest.approx(0.62) and r["fee"] == 5.1
+    assert r["status"] == "open" and r["contracts"] == 234 and r["px"] == pytest.approx(0.62) and r["fee"] == 5.1
 
 
 def test_loss_cap_stops_and_texts(bot):
@@ -101,7 +101,7 @@ def test_alert_signal_uses_matched_ticker_and_price_cap(bot):
     bot["alerts"] = [{"key": "x|0xdef", "status": "open", "outcome": "Boston Celtics", "title": "t",
                       "leader_px": 0.88, "kalshi": T, "ask": 0.87}]
     fl.tick(False)
-    assert ledger()[-1]["limit"] == 0.90 and bot["orders"][0]["count"] == "222.00"
+    assert ledger()[-1]["limit"] == 0.90 and bot["orders"][0]["count"] == "166.00"
 
 
 def test_lane_rows_ignored_when_alerts_only(bot, monkeypatch):
