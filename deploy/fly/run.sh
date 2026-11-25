@@ -37,6 +37,8 @@ while true; do
   [ $((n % 2)) -eq 0 ] && job 100 scripts/kalshi_copy.py tick
   job 120 scripts/fav_live.py tick
   [ $((n % 30)) -eq 0 ] && { nice -n 15 bash -c "$(declare -f job); job 900 scripts/learner.py; job 600 scripts/alert_results.py" & }
+  [ $((n % 10)) -eq 0 ] && job 280 scripts/arena.py tick
+  [ "$(date +%H:%M)" = "08:00" ] && [ ! -f "/data/.polywatch/arena_sms_$(date +%F)" ] && touch "/data/.polywatch/arena_sms_$(date +%F)" && job 60 scripts/arena.py report --sms
   [ "$(date +%H:%M)" = "21:00" ] && job 300 scripts/alert_results.py --summary &
   # shortcut: tracker leaks ~1GB/h and got OOM-killed at 3.3GB; recycle it cleanly before that until the leak is found
   rss=$(ps -eo rss=,args= | awk '/-m polymarket_insider_tracker/ && !/awk/ {print $1; exit}')
