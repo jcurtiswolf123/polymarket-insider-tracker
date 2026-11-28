@@ -9,5 +9,5 @@ primary_region = "sjc"
   destination = "/data"
 
 [[vm]]
-  size = "performance-1x"
+  size = "shared-cpu-2x"
   memory = "4gb"
